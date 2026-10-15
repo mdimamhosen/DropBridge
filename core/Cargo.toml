@@ -1,0 +1,33 @@
+[package]
+name = "dropbridge-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "dropbridge"
+
+[dependencies]
+anyhow = "1"
+blake3 = "1"
+fs4 = { version = "0.13", features = ["sync"] }
+hex = "0.4"
+if-addrs = "0.13"
+mdns-sd = "0.13"
+rand = "0.8"
+rcgen = "0.13"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+socket2 = "0.5"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "sync", "time", "macros", "fs"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
+unicode-normalization = "0.1"
+walkdir = "2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
