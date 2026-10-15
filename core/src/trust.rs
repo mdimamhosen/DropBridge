@@ -18,10 +18,7 @@ pub struct TrustStore {
 
 impl TrustStore {
     pub fn load(path: PathBuf) -> Self {
-        let devices = std::fs::read(&path)
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default();
+        let devices = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
         Self { path, devices }
     }
 
@@ -41,13 +38,7 @@ impl TrustStore {
     }
 
     pub fn set(&mut self, fp: &str, name: &str, blocked: bool) -> Result<()> {
-        self.devices.insert(
-            fp.to_string(),
-            Device {
-                name: name.to_string(),
-                blocked,
-            },
-        );
+        self.devices.insert(fp.to_string(), Device { name: name.to_string(), blocked });
         self.save()
     }
 

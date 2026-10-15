@@ -126,7 +126,8 @@ pub trait Delegate: Send + Sync {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum SendItem {
     Path {
         path: String,
@@ -143,6 +144,11 @@ pub enum SendItem {
     },
     /// An (empty) folder from a platform picker.
     Dir {
+        rel_path: String,
+    },
+    /// A local file sent under a chosen relative path (used by retry).
+    FileAs {
+        path: String,
         rel_path: String,
     },
 }
@@ -212,6 +218,7 @@ struct Inner {
     tokens: Mutex<HashMap<String, Instant>>,
     bad_tokens: AtomicU32,
     accepted: Mutex<HashMap<String, Accepted>>,
+    retry: Mutex<HashMap<String, (Target, Vec<SendItem>)>>,
 }
 
 pub struct Node {
@@ -226,11 +233,7 @@ impl Node {
     pub fn new(cfg: NodeConfig, delegate: Arc<dyn Delegate>) -> Result<Self> {
         std::fs::create_dir_all(&cfg.data_dir).context("Can't create the app data folder")?;
         std::fs::create_dir_all(&cfg.download_dir).context("Can't create the download folder")?;
-        let id = if cfg.identity.is_empty() {
-            Identity::generate()?
-        } else {
-            Identity::from_secret(&cfg.identity)?
-        };
+        let id = if cfg.identity.is_empty() { Identity::generate()? } else { Identity::from_secret(&cfg.identity)? };
         let inner = Arc::new(Inner {
             name: cfg.name.clone(),
             kind: cfg.kind.clone(),
@@ -238,9 +241,7 @@ impl Node {
             server: tls::server_config(&id)?,
             client: tls::client_config(&id)?,
             delegate,
-            trust: Mutex::new(TrustStore::load(
-                Path::new(&cfg.data_dir).join("trusted.json"),
-            )),
+            trust: Mutex::new(TrustStore::load(Path::new(&cfg.data_dir).join("trusted.json"))),
             download_dir: Mutex::new(cfg.download_dir.into()),
             auto_accept: AtomicBool::new(cfg.auto_accept_trusted),
             pending: Default::default(),
@@ -248,61 +249,30 @@ impl Node {
             tokens: Default::default(),
             bad_tokens: AtomicU32::new(0),
             accepted: Default::default(),
+            retry: Default::default(),
         });
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()?;
+        let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
         let listener = rt
             .block_on(TcpListener::bind(("0.0.0.0", cfg.port)))
-            .with_context(|| {
-                format!(
-                    "Can't listen on port {} — is another copy running?",
-                    cfg.port
-                )
-            })?;
+            .with_context(|| format!("Can't listen on port {} — is another copy running?", cfg.port))?;
         let port = listener.local_addr()?.port();
         rt.spawn(accept_loop(inner.clone(), listener));
         let mdns = if cfg.discovery {
             let i = inner.clone();
-            Some(discovery::start(
-                &inner.fp,
-                &cfg.name,
-                &cfg.kind,
-                port,
-                move |f| {
-                    let e = match f {
-                        discovery::Found::Up {
-                            id,
-                            name,
-                            kind,
-                            addrs,
-                            port,
-                        } => {
-                            let trusted = i.trust.lock().unwrap().is_trusted(&id);
-                            Event::PeerFound {
-                                id,
-                                name,
-                                kind,
-                                addrs,
-                                port,
-                                trusted,
-                            }
-                        }
-                        discovery::Found::Down { id } => Event::PeerLost { id },
-                    };
-                    i.delegate.on_event(e);
-                },
-            )?)
+            Some(discovery::start(&inner.fp, &cfg.name, &cfg.kind, port, move |f| {
+                let e = match f {
+                    discovery::Found::Up { id, name, kind, addrs, port } => {
+                        let trusted = i.trust.lock().unwrap().is_trusted(&id);
+                        Event::PeerFound { id, name, kind, addrs, port, trusted }
+                    }
+                    discovery::Found::Down { id } => Event::PeerLost { id },
+                };
+                i.delegate.on_event(e);
+            })?)
         } else {
             None
         };
-        Ok(Self {
-            inner,
-            rt,
-            port,
-            secret: id.to_secret(),
-            _mdns: mdns,
-        })
+        Ok(Self { inner, rt, port, secret: id.to_secret(), _mdns: mdns })
     }
 
     /// Persist this in OS secure storage and pass it back as `NodeConfig::identity`.
@@ -320,13 +290,7 @@ impl Node {
     pub fn send(&self, target: Target, items: Vec<SendItem>) -> String {
         let tid = hex::encode(rand::random::<[u8; 8]>());
         let ctl = self.inner.new_ctl(&tid);
-        self.rt.spawn(run_send(
-            self.inner.clone(),
-            tid.clone(),
-            target,
-            items,
-            ctl,
-        ));
+        self.rt.spawn(run_send(self.inner.clone(), tid.clone(), target, items, ctl));
         tid
     }
 
@@ -342,16 +306,15 @@ impl Node {
     pub fn resume(&self, transfer_id: &str) {
         self.inner.set_ctl(transfer_id, Ctl::Run)
     }
+    /// Resend only the files of a finished transfer that failed or never arrived. Returns the new transfer id.
+    pub fn retry(&self, transfer_id: &str) -> Option<String> {
+        let (target, items) = self.inner.retry.lock().unwrap().remove(transfer_id)?;
+        Some(self.send(target, items))
+    }
+
     pub fn cancel(&self, transfer_id: &str) {
         self.inner.set_ctl(transfer_id, Ctl::Cancel);
-        self.respond(
-            transfer_id,
-            Decision {
-                accept: false,
-                trust: false,
-                conflict: Conflict::Skip,
-            },
-        );
+        self.respond(transfer_id, Decision { accept: false, trust: false, conflict: Conflict::Skip });
     }
 
     pub fn trust(&self, fp: &str, name: &str) -> Result<()> {
@@ -364,14 +327,7 @@ impl Node {
         self.inner.trust.lock().unwrap().forget(fp)
     }
     pub fn devices(&self) -> Vec<(String, Device)> {
-        self.inner
-            .trust
-            .lock()
-            .unwrap()
-            .devices
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect()
+        self.inner.trust.lock().unwrap().devices.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
     }
 
     pub fn set_download_dir(&self, dir: &str) -> Result<()> {
@@ -385,46 +341,24 @@ impl Node {
 
     /// QR payload: `dropbridge://pair?h=ip1,ip2&p=port&fp=<fingerprint>&t=<one-time token>` (valid 5 min).
     pub fn pairing_uri(&self) -> String {
-        let t = self
-            .inner
-            .new_token(hex::encode(rand::random::<[u8; 16]>()));
-        format!(
-            "dropbridge://pair?h={}&p={}&fp={}&t={}",
-            local_ips().join(","),
-            self.port,
-            self.inner.fp,
-            t
-        )
+        let t = self.inner.new_token(hex::encode(rand::random::<[u8; 16]>()));
+        format!("dropbridge://pair?h={}&p={}&fp={}&t={}", local_ips().join(","), self.port, self.inner.fp, t)
     }
 
     /// Short code for typing by hand (valid 5 min, 5 wrong guesses invalidate all codes).
     pub fn pairing_code(&self) -> String {
-        self.inner
-            .new_token(format!("{:06}", rand::random::<u32>() % 1_000_000))
+        self.inner.new_token(format!("{:06}", rand::random::<u32>() % 1_000_000))
     }
 }
 
 pub fn parse_pairing_uri(s: &str) -> Result<Target> {
-    let q = s
-        .strip_prefix("dropbridge://pair?")
-        .context("Not a DropBridge pairing code")?;
+    let q = s.strip_prefix("dropbridge://pair?").context("Not a DropBridge pairing code")?;
     let kv: HashMap<&str, &str> = q.split('&').filter_map(|p| p.split_once('=')).collect();
-    let fp = kv
-        .get("fp")
-        .filter(|f| f.len() == 64 && f.chars().all(|c| c.is_ascii_hexdigit()));
+    let fp = kv.get("fp").filter(|f| f.len() == 64 && f.chars().all(|c| c.is_ascii_hexdigit()));
     Ok(Target {
-        host: kv
-            .get("h")
-            .context("pairing code has no address")?
-            .to_string(),
-        port: kv
-            .get("p")
-            .and_then(|p| p.parse().ok())
-            .context("pairing code has no port")?,
-        fingerprint: Some(
-            fp.context("pairing code has no valid fingerprint")?
-                .to_string(),
-        ),
+        host: kv.get("h").context("pairing code has no address")?.to_string(),
+        port: kv.get("p").and_then(|p| p.parse().ok()).context("pairing code has no port")?,
+        fingerprint: Some(fp.context("pairing code has no valid fingerprint")?.to_string()),
         token: kv.get("t").map(|t| t.to_string()),
     })
 }
@@ -482,19 +416,11 @@ fn tune(s: &TcpStream) {
     let _ = sock.set_send_buffer_size(4 << 20);
     let _ = sock.set_recv_buffer_size(4 << 20);
     // Detect silently dropped Wi-Fi within ~30 s instead of hanging forever.
-    let _ = sock.set_tcp_keepalive(
-        &socket2::TcpKeepalive::new()
-            .with_time(Duration::from_secs(10))
-            .with_interval(Duration::from_secs(5)),
-    );
+    let _ = sock.set_tcp_keepalive(&socket2::TcpKeepalive::new().with_time(Duration::from_secs(10)).with_interval(Duration::from_secs(5)));
 }
 
 fn now_mtime(m: &std::fs::Metadata) -> Option<i64> {
-    m.modified()
-        .ok()?
-        .duration_since(UNIX_EPOCH)
-        .ok()
-        .map(|d| d.as_secs() as i64)
+    m.modified().ok()?.duration_since(UNIX_EPOCH).ok().map(|d| d.as_secs() as i64)
 }
 
 fn ago(t: Instant) -> f64 {
@@ -542,13 +468,7 @@ impl Meter {
     }
     /// Bytes already present (resume) count as done but not toward speed.
     fn reset(&mut self, total: u64, done: u64, files: u32) {
-        (
-            self.total,
-            self.done,
-            self.base,
-            self.last_done,
-            self.files_total,
-        ) = (total, done, done, done, files);
+        (self.total, self.done, self.base, self.last_done, self.files_total) = (total, done, done, done, files);
         (self.start, self.last) = (Instant::now(), Instant::now());
     }
     fn avg(&self) -> u64 {
@@ -580,14 +500,7 @@ impl Meter {
             paused: self.paused,
         });
     }
-    fn finish(
-        &self,
-        d: &Inner,
-        peer_id: &str,
-        files_ok: u32,
-        failed: Vec<String>,
-        err: Option<String>,
-    ) {
+    fn finish(&self, d: &Inner, peer_id: &str, files_ok: u32, failed: Vec<String>, err: Option<String>) {
         d.emit(Event::Finished {
             transfer_id: self.tid.clone(),
             outgoing: self.outgoing,
@@ -624,81 +537,41 @@ fn build_manifest(items: Vec<SendItem>) -> Result<Vec<Entry>> {
     for it in items {
         let mut push = |kind, path: String, size, mtime, text, src| {
             let id = out.len() as u32;
-            out.push(Entry {
-                item: Item {
-                    id,
-                    kind,
-                    path,
-                    size,
-                    mtime,
-                    text,
-                },
-                src,
-            });
+            out.push(Entry { item: Item { id, kind, path, size, mtime, text }, src });
         };
         match it {
             SendItem::Text { text } => {
                 if text.len() > MAX_TEXT {
                     bail!("Text is too long to send as a message; save it to a file and send the file.");
                 }
-                push(
-                    ItemKind::Text,
-                    "Text".into(),
-                    text.len() as u64,
-                    None,
-                    Some(text),
-                    Src::None,
-                )
+                push(ItemKind::Text, "Text".into(), text.len() as u64, None, Some(text), Src::None)
             }
             SendItem::Dir { rel_path } => push(ItemKind::Dir, rel_path, 0, None, None, Src::None),
-            SendItem::Uri {
-                uri,
-                rel_path,
-                size,
-                mtime,
-            } => push(ItemKind::File, rel_path, size, mtime, None, Src::Uri(uri)),
+            SendItem::FileAs { path, rel_path } => {
+                let md = std::fs::metadata(&path).with_context(|| format!("Can't read {path}"))?;
+                push(ItemKind::File, rel_path, md.len(), now_mtime(&md), None, Src::Path(path.into()))
+            }
+            SendItem::Uri { uri, rel_path, size, mtime } => push(ItemKind::File, rel_path, size, mtime, None, Src::Uri(uri)),
             SendItem::Path { path } => {
                 let p = PathBuf::from(&path);
                 let md = std::fs::metadata(&p).with_context(|| format!("Can't read {path}"))?;
                 let base = p.parent().unwrap_or(Path::new("")).to_path_buf();
                 let rel = |q: &Path| {
-                    q.strip_prefix(&base)
-                        .unwrap_or(q)
-                        .components()
-                        .map(|c| c.as_os_str().to_string_lossy())
-                        .collect::<Vec<_>>()
-                        .join("/")
+                    q.strip_prefix(&base).unwrap_or(q).components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/")
                 };
                 if md.is_dir() {
-                    for e in walkdir::WalkDir::new(&p)
-                        .follow_links(false)
-                        .sort_by_file_name()
-                    {
+                    for e in walkdir::WalkDir::new(&p).follow_links(false).sort_by_file_name() {
                         let e = e.with_context(|| format!("Can't read folder {path}"))?;
                         let ft = e.file_type();
                         if ft.is_dir() {
                             push(ItemKind::Dir, rel(e.path()), 0, None, None, Src::None);
                         } else if ft.is_file() {
                             let m = e.metadata()?;
-                            push(
-                                ItemKind::File,
-                                rel(e.path()),
-                                m.len(),
-                                now_mtime(&m),
-                                None,
-                                Src::Path(e.path().into()),
-                            );
+                            push(ItemKind::File, rel(e.path()), m.len(), now_mtime(&m), None, Src::Path(e.path().into()));
                         } // symlinks and special files are skipped on purpose
                     }
                 } else {
-                    push(
-                        ItemKind::File,
-                        rel(&p),
-                        md.len(),
-                        now_mtime(&md),
-                        None,
-                        Src::Path(p),
-                    );
+                    push(ItemKind::File, rel(&p), md.len(), now_mtime(&md), None, Src::Path(p));
                 }
             }
         }
@@ -709,18 +582,9 @@ fn build_manifest(items: Vec<SendItem>) -> Result<Vec<Entry>> {
     Ok(out)
 }
 
-async fn run_send(
-    inner: Arc<Inner>,
-    tid: String,
-    target: Target,
-    items: Vec<SendItem>,
-    ctl: Arc<watch::Sender<Ctl>>,
-) {
+async fn run_send(inner: Arc<Inner>, tid: String, target: Target, items: Vec<SendItem>, ctl: Arc<watch::Sender<Ctl>>) {
     let mut m = Meter::new(&tid, true);
-    let entries = match tokio::task::spawn_blocking(move || build_manifest(items))
-        .await
-        .unwrap()
-    {
+    let entries = match tokio::task::spawn_blocking(move || build_manifest(items)).await.unwrap() {
         Ok(e) => e,
         Err(e) => return m.finish(&inner, "", 0, vec![], Some(e.to_string())),
     };
@@ -729,49 +593,35 @@ async fn run_send(
     let deadline = Instant::now() + RETRY_WINDOW;
     let mut attempt = 0;
     let res = loop {
-        let r = send_once(
-            &inner,
-            &tid,
-            &target,
-            &entries,
-            &mut verified,
-            &mut m,
-            &ctl,
-            &mut peer_id,
-        )
-        .await;
+        let r = send_once(&inner, &tid, &target, &entries, &mut verified, &mut m, &ctl, &mut peer_id).await;
         match r {
-            Err(e)
-                if e.downcast_ref::<Fatal>().is_none()
-                    && Instant::now() < deadline
-                    && *ctl.borrow() != Ctl::Cancel =>
-            {
+            Err(e) if e.downcast_ref::<Fatal>().is_none() && Instant::now() < deadline && *ctl.borrow() != Ctl::Cancel => {
                 attempt += 1;
-                inner.emit(Event::Reconnecting {
-                    transfer_id: tid.clone(),
-                    attempt,
-                    error: format!("{e:#}"),
-                });
+                inner.emit(Event::Reconnecting { transfer_id: tid.clone(), attempt, error: format!("{e:#}") });
                 tokio::time::sleep(Duration::from_secs((1u64 << attempt.min(3)).min(8))).await;
             }
             r => break r,
         }
     };
     inner.ctl.lock().unwrap().remove(&tid);
-    let path = |id: &u32| entries[*id as usize].item.path.clone();
-    let failed: Vec<String> = verified
+    // Remember what didn't make it so `Node::retry` can resend just that.
+    let redo: Vec<SendItem> = entries
         .iter()
-        .filter(|(_, e)| e.is_some())
-        .map(|(id, e)| format!("{}: {}", path(id), e.as_ref().unwrap()))
+        .filter(|e| e.item.kind == ItemKind::File && !matches!(verified.get(&e.item.id), Some(None)))
+        .filter_map(|e| match &e.src {
+            Src::Path(p) => Some(SendItem::FileAs { path: p.to_string_lossy().into(), rel_path: e.item.path.clone() }),
+            Src::Uri(u) => Some(SendItem::Uri { uri: u.clone(), rel_path: e.item.path.clone(), size: e.item.size, mtime: e.item.mtime }),
+            Src::None => None,
+        })
         .collect();
+    if !redo.is_empty() && *ctl.borrow() != Ctl::Cancel {
+        inner.retry.lock().unwrap().insert(tid.clone(), (target, redo));
+    }
+    let path = |id: &u32| entries[*id as usize].item.path.clone();
+    let failed: Vec<String> =
+        verified.iter().filter(|(_, e)| e.is_some()).map(|(id, e)| format!("{}: {}", path(id), e.as_ref().unwrap())).collect();
     let ok = verified.values().filter(|e| e.is_none()).count() as u32;
-    m.finish(
-        &inner,
-        &peer_id,
-        ok,
-        failed,
-        res.err().map(|e| format!("{e:#}")),
-    );
+    m.finish(&inner, &peer_id, ok, failed, res.err().map(|e| format!("{e:#}")));
 }
 
 async fn connect(inner: &Inner, t: &Target) -> Result<TlsStream<TcpStream>> {
@@ -784,8 +634,15 @@ async fn connect(inner: &Inner, t: &Target) -> Result<TlsStream<TcpStream>> {
                 let c = tokio_rustls::TlsConnector::from(inner.client.clone()).connect(name, tcp).await?;
                 return Ok(TlsStream::from(c));
             }
-            Ok(Err(e)) => last = anyhow!("Couldn't connect to {h}:{} ({e}). Check both devices are on the same Wi-Fi and DropBridge is open.", t.port),
-            Err(_) => last = anyhow!("{h}:{} didn't answer. Check both devices are on the same Wi-Fi, and that a firewall or VPN isn't blocking DropBridge.", t.port),
+            Ok(Err(e)) => {
+                last = anyhow!("Couldn't connect to {h}:{} ({e}). Check both devices are on the same Wi-Fi and DropBridge is open.", t.port)
+            }
+            Err(_) => {
+                last = anyhow!(
+                    "{h}:{} didn't answer. Check both devices are on the same Wi-Fi, and that a firewall or VPN isn't blocking DropBridge.",
+                    t.port
+                )
+            }
         }
     }
     Err(last)
@@ -829,13 +686,7 @@ fn read_full(f: &mut File, buf: &mut [u8]) -> std::io::Result<usize> {
 }
 
 /// Disk read + BLAKE3 on a blocking thread, so hashing never stalls the network task.
-fn read_source(
-    src: Src,
-    offset: u64,
-    prefix: Option<String>,
-    tx: mpsc::Sender<Chunk>,
-    d: Arc<dyn Delegate>,
-) {
+fn read_source(src: Src, offset: u64, prefix: Option<String>, tx: mpsc::Sender<Chunk>, d: Arc<dyn Delegate>) {
     let r = (|| -> Result<()> {
         let mut f = open_src(&src, &*d)?;
         let mut h = blake3::Hasher::new();
@@ -871,21 +722,10 @@ fn read_source(
 /// Reader side of an outgoing transfer. `Err` = connection problem (retryable).
 type Incoming = std::result::Result<Msg, String>;
 
-fn handle_incoming(
-    m: Incoming,
-    verified: &mut HashMap<u32, Option<String>>,
-    ctl: &watch::Sender<Ctl>,
-) -> Result<bool> {
+fn handle_incoming(m: Incoming, verified: &mut HashMap<u32, Option<String>>, ctl: &watch::Sender<Ctl>) -> Result<bool> {
     match m {
         Ok(Msg::Verified { item, ok, error }) => {
-            verified.insert(
-                item,
-                if ok {
-                    None
-                } else {
-                    Some(error.unwrap_or_else(|| "verification failed".into()))
-                },
-            );
+            verified.insert(item, if ok { None } else { Some(error.unwrap_or_else(|| "verification failed".into())) });
         }
         Ok(Msg::Pause) => {
             ctl.send_replace(Ctl::Pause);
@@ -920,77 +760,44 @@ async fn send_once(
     }
     if let Some(fp) = &target.fingerprint {
         if !fp.eq_ignore_ascii_case(&p.fingerprint) {
-            return Err(fatal("This device's identity doesn't match the one you paired with. Someone may be impersonating it, so nothing was sent."));
+            return Err(fatal(
+                "This device's identity doesn't match the one you paired with. Someone may be impersonating it, so nothing was sent.",
+            ));
         }
     }
     if inner.trust.lock().unwrap().is_blocked(&p.fingerprint) {
-        return Err(fatal(
-            "You blocked this device. Unblock it in Settings to send to it.",
-        ));
+        return Err(fatal("You blocked this device. Unblock it in Settings to send to it."));
     }
     let (mut r, mut w) = tokio::io::split(conn);
-    write_msg(
-        &mut w,
-        &Msg::Hello {
-            name: inner.name.clone(),
-            kind: inner.kind.clone(),
-            version: PROTOCOL_VERSION,
-        },
-    )
-    .await?;
+    write_msg(&mut w, &Msg::Hello { name: inner.name.clone(), kind: inner.kind.clone(), version: PROTOCOL_VERSION }).await?;
     let name = match timeout(Duration::from_secs(10), read_msg(&mut r)).await?? {
         Msg::Hello { name, .. } => name,
         Msg::Cancel { reason } => return Err(fatal(reason)),
         _ => bail!("protocol error: expected Hello"),
     };
     m.peer_name = name.clone();
-    inner.emit(Event::AwaitingApproval {
-        transfer_id: tid.into(),
-        to_name: name,
-        sas: p.sas,
-    });
+    inner.emit(Event::AwaitingApproval { transfer_id: tid.into(), to_name: name, sas: p.sas });
 
     // Items already verified in an earlier attempt are not offered again.
-    let todo: Vec<&Entry> = entries
-        .iter()
-        .filter(|e| !verified.contains_key(&e.item.id))
-        .collect();
+    let todo: Vec<&Entry> = entries.iter().filter(|e| !verified.contains_key(&e.item.id)).collect();
     write_msg(
         &mut w,
-        &Msg::Offer {
-            transfer_id: tid.into(),
-            items: todo.iter().map(|e| e.item.clone()).collect(),
-            token: target.token.clone(),
-        },
+        &Msg::Offer { transfer_id: tid.into(), items: todo.iter().map(|e| e.item.clone()).collect(), token: target.token.clone() },
     )
     .await?;
     let ans = tokio::select! {
         a = timeout(APPROVAL_TIMEOUT + Duration::from_secs(10), read_msg(&mut r)) => a.map_err(|_| fatal("The other device didn't respond in time."))??,
         _ = wait_cancel(ctl) => { let _ = write_msg(&mut w, &Msg::Cancel { reason: "Sender cancelled".into() }).await; return Err(fatal("Cancelled")); }
     };
-    let Msg::Answer {
-        accepted,
-        items: answers,
-        reason,
-    } = ans
-    else {
-        bail!("protocol error: expected Answer")
-    };
+    let Msg::Answer { accepted, items: answers, reason } = ans else { bail!("protocol error: expected Answer") };
     if !accepted {
-        return Err(fatal(
-            reason.unwrap_or_else(|| "The other device declined.".into()),
-        ));
+        return Err(fatal(reason.unwrap_or_else(|| "The other device declined.".into())));
     }
     let answers: HashMap<u32, ItemAnswer> = answers.into_iter().map(|a| (a.id, a)).collect();
     let files: Vec<(&Entry, ItemAnswer)> = todo
         .iter()
         .filter(|e| e.item.kind == ItemKind::File)
-        .filter_map(|e| {
-            answers
-                .get(&e.item.id)
-                .filter(|a| a.accept)
-                .map(|a| (*e, a.clone()))
-        })
+        .filter_map(|e| answers.get(&e.item.id).filter(|a| a.accept).map(|a| (*e, a.clone())))
         .collect();
     for e in &todo {
         if e.item.kind != ItemKind::File {
@@ -1053,14 +860,7 @@ async fn stream_files(
                 Chunk::Start(off) => {
                     m.done -= a.offset - off;
                     m.base -= a.offset - off;
-                    write_msg(
-                        w,
-                        &Msg::Start {
-                            item: id,
-                            offset: off,
-                        },
-                    )
-                    .await?;
+                    write_msg(w, &Msg::Start { item: id, offset: off }).await?;
                     started = true;
                 }
                 Chunk::Data(b) => {
@@ -1072,13 +872,7 @@ async fn stream_files(
                         match c {
                             Ctl::Run => break,
                             Ctl::Cancel => {
-                                let _ = write_msg(
-                                    w,
-                                    &Msg::Cancel {
-                                        reason: "Sender cancelled".into(),
-                                    },
-                                )
-                                .await;
+                                let _ = write_msg(w, &Msg::Cancel { reason: "Sender cancelled".into() }).await;
                                 return Err(fatal("Cancelled"));
                             }
                             Ctl::Pause => {
@@ -1107,14 +901,7 @@ async fn stream_files(
                 }
                 Chunk::Err(err) => {
                     if started {
-                        write_msg(
-                            w,
-                            &Msg::FileEnd {
-                                item: id,
-                                hash: String::new(),
-                            },
-                        )
-                        .await?;
+                        write_msg(w, &Msg::FileEnd { item: id, hash: String::new() }).await?;
                     }
                     verified.insert(id, Some(err));
                 }
@@ -1209,12 +996,7 @@ fn durable(f: &File) -> std::io::Result<()> {
 }
 
 /// Disk write + BLAKE3 on a blocking thread. Returns the hash of the whole file.
-fn write_part(
-    part: PathBuf,
-    offset: u64,
-    mtime: Option<i64>,
-    mut rx: mpsc::Receiver<Vec<u8>>,
-) -> Result<String> {
+fn write_part(part: PathBuf, offset: u64, mtime: Option<i64>, mut rx: mpsc::Receiver<Vec<u8>>) -> Result<String> {
     let mut f = open_part(&part).with_context(|| format!("Can't write {}", part.display()))?;
     let mut h = blake3::Hasher::new();
     if offset > 0 {
@@ -1244,57 +1026,26 @@ fn write_part(
 
 async fn handle_conn(inner: Arc<Inner>, tcp: TcpStream) -> Result<()> {
     tune(&tcp);
-    let conn = timeout(
-        Duration::from_secs(10),
-        tokio_rustls::TlsAcceptor::from(inner.server.clone()).accept(tcp),
-    )
-    .await??;
+    let conn = timeout(Duration::from_secs(10), tokio_rustls::TlsAcceptor::from(inner.server.clone()).accept(tcp)).await??;
     let conn = TlsStream::from(conn);
     let p = tls::peer(&conn)?;
     let fp = p.fingerprint.clone();
     let (mut r, mut w) = tokio::io::split(conn);
     if inner.trust.lock().unwrap().is_blocked(&fp) {
-        return write_msg(
-            &mut w,
-            &Msg::Cancel {
-                reason: "The other device declined.".into(),
-            },
-        )
-        .await;
+        return write_msg(&mut w, &Msg::Cancel { reason: "The other device declined.".into() }).await;
     }
-    let Msg::Hello { name, kind, .. } =
-        timeout(Duration::from_secs(10), read_msg(&mut r)).await??
-    else {
-        bail!("expected Hello")
-    };
+    let Msg::Hello { name, kind, .. } = timeout(Duration::from_secs(10), read_msg(&mut r)).await?? else { bail!("expected Hello") };
     let (otx, orx) = mpsc::unbounded_channel();
     let writer = tokio::spawn(writer_task(w, orx));
-    let _ = otx.send(Msg::Hello {
-        name: inner.name.clone(),
-        kind: inner.kind.clone(),
-        version: PROTOCOL_VERSION,
-    });
-    let Msg::Offer {
-        transfer_id: tid,
-        items,
-        token,
-    } = timeout(Duration::from_secs(30), read_msg(&mut r)).await??
-    else {
+    let _ = otx.send(Msg::Hello { name: inner.name.clone(), kind: inner.kind.clone(), version: PROTOCOL_VERSION });
+    let Msg::Offer { transfer_id: tid, items, token } = timeout(Duration::from_secs(30), read_msg(&mut r)).await?? else {
         bail!("expected Offer")
     };
-    let res = receive(
-        &inner, &mut r, &otx, &tid, items, token, &fp, &name, &kind, &p.sas,
-    )
-    .await;
+    let res = receive(&inner, &mut r, &otx, &tid, items, token, &fp, &name, &kind, &p.sas).await;
     if let Err(e) = &res {
-        let _ = otx.send(Msg::Cancel {
-            reason: format!("{e:#}"),
-        });
+        let _ = otx.send(Msg::Cancel { reason: format!("{e:#}") });
         // Keep reading briefly: closing with unread data sends a TCP reset that can destroy the Cancel.
-        let _ = timeout(Duration::from_secs(2), async {
-            while read_frame(&mut r).await.is_ok() {}
-        })
-        .await;
+        let _ = timeout(Duration::from_secs(2), async { while read_frame(&mut r).await.is_ok() {} }).await;
     }
     drop(otx);
     let _ = timeout(Duration::from_secs(5), writer).await;
@@ -1302,11 +1053,7 @@ async fn handle_conn(inner: Arc<Inner>, tcp: TcpStream) -> Result<()> {
 }
 
 fn decline(otx: &mpsc::UnboundedSender<Msg>, reason: &str) {
-    let _ = otx.send(Msg::Answer {
-        accepted: false,
-        items: vec![],
-        reason: Some(reason.into()),
-    });
+    let _ = otx.send(Msg::Answer { accepted: false, items: vec![], reason: Some(reason.into()) });
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1350,113 +1097,88 @@ async fn receive(
         bytes = bytes.checked_add(it.size).context("invalid size")?;
     }
 
+    let mut paired_now = false;
     if let Some(t) = token {
         if inner.take_token(&t) {
             inner.trust.lock().unwrap().set(fp, name, false)?;
+            paired_now = true;
         } else {
-            decline(
-                otx,
-                "The pairing code is wrong or expired. Show a new code and try again.",
-            );
+            decline(otx, "The pairing code is wrong or expired. Show a new code and try again.");
             bail!("bad pairing token");
         }
     }
     let trusted = inner.trust.lock().unwrap().is_trusted(fp);
     let key = format!("{fp}:{tid}");
     let prior = inner.accepted.lock().unwrap().get(&key).map(|a| a.decision);
-    let decision = if let Some(d) = prior {
-        d // reconnect of a transfer the user already approved
-    } else if trusted && inner.auto_accept.load(Ordering::Relaxed) {
-        Decision {
-            accept: true,
-            trust: false,
-            conflict: Conflict::Rename,
-        }
-    } else {
-        let rx = {
-            let mut pend = inner.pending.lock().unwrap();
-            if pend.contains_key(tid) || pend.values().any(|(f, _)| f == fp) || pend.len() >= 8 {
-                drop(pend);
-                decline(
-                    otx,
-                    "Busy: another request from this device is waiting for approval.",
-                );
-                return Ok(());
+    if items.is_empty() && !paired_now {
+        decline(otx, "Nothing to send.");
+        return Ok(());
+    }
+    let decision =
+        if items.is_empty() {
+            Decision { accept: true, trust: false, conflict: Conflict::Rename } // pure pairing handshake
+        } else if let Some(d) = prior {
+            d // reconnect of a transfer the user already approved
+        } else if trusted && inner.auto_accept.load(Ordering::Relaxed) {
+            Decision { accept: true, trust: false, conflict: Conflict::Rename }
+        } else {
+            let rx = {
+                let mut pend = inner.pending.lock().unwrap();
+                if pend.contains_key(tid) || pend.values().any(|(f, _)| f == fp) || pend.len() >= 8 {
+                    drop(pend);
+                    decline(otx, "Busy: another request from this device is waiting for approval.");
+                    return Ok(());
+                }
+                let (tx, rx) = oneshot::channel();
+                pend.insert(tid.to_string(), (fp.to_string(), tx));
+                rx
+            };
+            inner.new_ctl(tid);
+            inner.emit(Event::IncomingOffer {
+                transfer_id: tid.into(),
+                from_id: fp.into(),
+                from_name: name.into(),
+                from_kind: kind.into(),
+                trusted,
+                sas: sas.into(),
+                files: items.iter().filter(|i| i.kind == ItemKind::File).count() as u32,
+                bytes,
+                texts: items.iter().filter(|i| i.kind == ItemKind::Text).count() as u32,
+                preview: items
+                    .iter()
+                    .filter(|i| i.kind != ItemKind::Dir)
+                    .take(5)
+                    .map(|i| {
+                        if i.kind == ItemKind::Text {
+                            i.text.clone().unwrap_or_default().chars().take(80).collect()
+                        } else {
+                            i.path.clone()
+                        }
+                    })
+                    .collect(),
+            });
+            let d = timeout(APPROVAL_TIMEOUT, rx).await.ok().and_then(|r| r.ok());
+            inner.pending.lock().unwrap().remove(tid);
+            match d {
+                Some(d) if d.accept => d,
+                _ => {
+                    decline(otx, if d.is_none() { "Nobody accepted on the other device in time." } else { "The other device declined." });
+                    inner.ctl.lock().unwrap().remove(tid);
+                    m.finish(inner, fp, 0, vec![], Some("Declined".into()));
+                    return Ok(());
+                }
             }
-            let (tx, rx) = oneshot::channel();
-            pend.insert(tid.to_string(), (fp.to_string(), tx));
-            rx
         };
-        inner.new_ctl(tid);
-        inner.emit(Event::IncomingOffer {
-            transfer_id: tid.into(),
-            from_id: fp.into(),
-            from_name: name.into(),
-            from_kind: kind.into(),
-            trusted,
-            sas: sas.into(),
-            files: items.iter().filter(|i| i.kind == ItemKind::File).count() as u32,
-            bytes,
-            texts: items.iter().filter(|i| i.kind == ItemKind::Text).count() as u32,
-            preview: items
-                .iter()
-                .filter(|i| i.kind != ItemKind::Dir)
-                .take(5)
-                .map(|i| {
-                    if i.kind == ItemKind::Text {
-                        i.text
-                            .clone()
-                            .unwrap_or_default()
-                            .chars()
-                            .take(80)
-                            .collect()
-                    } else {
-                        i.path.clone()
-                    }
-                })
-                .collect(),
-        });
-        let d = timeout(APPROVAL_TIMEOUT, rx)
-            .await
-            .ok()
-            .and_then(|r| r.ok());
-        inner.pending.lock().unwrap().remove(tid);
-        match d {
-            Some(d) if d.accept => d,
-            _ => {
-                decline(
-                    otx,
-                    if d.is_none() {
-                        "Nobody accepted on the other device in time."
-                    } else {
-                        "The other device declined."
-                    },
-                );
-                inner.ctl.lock().unwrap().remove(tid);
-                m.finish(inner, fp, 0, vec![], Some("Declined".into()));
-                return Ok(());
-            }
-        }
-    };
     if decision.trust {
         inner.trust.lock().unwrap().set(fp, name, false)?;
     }
-    inner
-        .accepted
-        .lock()
-        .unwrap()
-        .entry(key.clone())
-        .or_insert(Accepted {
-            decision,
-            done: HashSet::new(),
-        });
+    inner.accepted.lock().unwrap().entry(key.clone()).or_insert(Accepted { decision, done: HashSet::new() });
     let existing = inner.ctl.lock().unwrap().get(tid).cloned();
     let ctl = existing.unwrap_or_else(|| inner.new_ctl(tid));
 
     // Plan targets, find resumable partials, check space.
     let dest = inner.download_dir.lock().unwrap().clone();
-    std::fs::create_dir_all(&dest)
-        .with_context(|| format!("Can't create download folder {}", dest.display()))?;
+    std::fs::create_dir_all(&dest).with_context(|| format!("Can't create download folder {}", dest.display()))?;
     let mut answers = Vec::new();
     let mut plan: HashMap<u32, Planned> = HashMap::new();
     let mut need: u64 = 0;
@@ -1469,76 +1191,49 @@ async fn receive(
                     from_name: name.into(),
                     text: it.text.clone().unwrap_or_default(),
                 });
-                answers.push(ItemAnswer {
-                    id: it.id,
-                    accept: true,
-                    offset: 0,
-                    prefix_hash: None,
-                });
+                answers.push(ItemAnswer { id: it.id, accept: true, offset: 0, prefix_hash: None });
             }
             ItemKind::Dir => {
-                let ok = paths::resolve(&dest, &rel)
-                    .and_then(|p| Ok(std::fs::create_dir_all(p)?))
-                    .is_ok();
-                answers.push(ItemAnswer {
-                    id: it.id,
-                    accept: ok,
-                    offset: 0,
-                    prefix_hash: None,
-                });
+                let ok = paths::resolve(&dest, &rel).and_then(|p| Ok(std::fs::create_dir_all(p)?)).is_ok();
+                answers.push(ItemAnswer { id: it.id, accept: ok, offset: 0, prefix_hash: None });
             }
             ItemKind::File => {
                 let target = match paths::resolve(&dest, &rel) {
                     Ok(t) => t,
                     Err(_) => {
-                        answers.push(ItemAnswer {
-                            id: it.id,
-                            accept: false,
-                            offset: 0,
-                            prefix_hash: None,
-                        });
+                        answers.push(ItemAnswer { id: it.id, accept: false, offset: 0, prefix_hash: None });
                         continue;
                     }
                 };
                 if decision.conflict == Conflict::Skip && target.exists() {
-                    answers.push(ItemAnswer {
-                        id: it.id,
-                        accept: false,
-                        offset: 0,
-                        prefix_hash: None,
-                    });
+                    answers.push(ItemAnswer { id: it.id, accept: false, offset: 0, prefix_hash: None });
                     continue;
                 }
                 let part = paths::part_path(&target);
-                let (offset, prefix_hash) =
-                    match tokio::task::spawn_blocking(move || hash_prefix(&part)).await? {
-                        Ok((n, h)) if n > 0 && n <= it.size => (n, Some(h)),
-                        _ => (0, None),
-                    };
+                let (offset, prefix_hash) = match tokio::task::spawn_blocking(move || hash_prefix(&part)).await? {
+                    Ok((n, h)) if n > 0 && n <= it.size => (n, Some(h)),
+                    _ => (0, None),
+                };
                 need += it.size - offset;
                 (total, have, nfiles) = (total + it.size, have + offset, nfiles + 1);
-                answers.push(ItemAnswer {
-                    id: it.id,
-                    accept: true,
-                    offset,
-                    prefix_hash,
-                });
+                answers.push(ItemAnswer { id: it.id, accept: true, offset, prefix_hash });
                 plan.insert(it.id, Planned { item: it, target });
             }
         }
     }
     let free = fs4::available_space(&dest).unwrap_or(u64::MAX);
     if need.saturating_add(need / 100).saturating_add(16 << 20) > free && need > 0 {
-        let msg = format!("Not enough space on {}: needs {}, only {} free. Free up space or choose another download folder.", inner.name, human(need), human(free));
+        let msg = format!(
+            "Not enough space on {}: needs {}, only {} free. Free up space or choose another download folder.",
+            inner.name,
+            human(need),
+            human(free)
+        );
         decline(otx, &msg);
         m.finish(inner, fp, 0, vec![], Some(msg));
         return Ok(());
     }
-    let _ = otx.send(Msg::Answer {
-        accepted: true,
-        items: answers,
-        reason: None,
-    });
+    let _ = otx.send(Msg::Answer { accepted: true, items: answers, reason: None });
     m.reset(total, have, nfiles);
 
     // Forward local pause/cancel to the sender.
@@ -1550,9 +1245,7 @@ async fn receive(
             let _ = otx2.send(match c {
                 Ctl::Run => Msg::Resume,
                 Ctl::Pause => Msg::Pause,
-                Ctl::Cancel => Msg::Cancel {
-                    reason: "The receiver cancelled".into(),
-                },
+                Ctl::Cancel => Msg::Cancel { reason: "The receiver cancelled".into() },
             });
         }
     });
@@ -1560,60 +1253,40 @@ async fn receive(
 
     let mut cur: Option<Current> = None;
     let mut failed = Vec::new();
-    let (dtx, mut drx) =
-        mpsc::unbounded_channel::<(u32, std::result::Result<(), (bool, String)>)>();
+    let (dtx, mut drx) = mpsc::unbounded_channel::<(u32, std::result::Result<(), (bool, String)>)>();
     let mut outstanding = 0usize;
     let writers = Arc::new(tokio::sync::Semaphore::new(64));
     let result: Result<()> = async {
         // Rename into place (serial, so conflict names can't race) and report.
-        let mut finalize =
-            |item: u32, r: std::result::Result<(), (bool, String)>| -> Result<bool> {
-                let pl = &plan[&item];
-                let part = paths::part_path(&pl.target);
-                let res = match r {
-                    Ok(()) => {
-                        let fin = if decision.conflict == Conflict::Overwrite {
-                            pl.target.clone()
-                        } else {
-                            paths::unique(&pl.target)
-                        };
-                        std::fs::rename(&part, &fin)
-                            .map(|_| fin)
-                            .map_err(|e| format!("Can't save file: {e}"))
-                    }
-                    Err((disk, e)) => {
-                        let _ = std::fs::remove_file(&part);
-                        if disk {
-                            return Err(fatal(e));
-                        }
-                        Err(e)
-                    }
-                };
-                let ok = res.is_ok();
-                let _ = otx.send(Msg::Verified {
-                    item,
-                    ok,
-                    error: res.as_ref().err().cloned(),
-                });
-                let shown = res
-                    .as_ref()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|_| pl.item.path.clone());
-                inner.emit(Event::ItemDone {
-                    transfer_id: tid.into(),
-                    path: shown,
-                    ok,
-                    error: res.as_ref().err().cloned(),
-                });
-                if ok {
-                    if let Some(a) = inner.accepted.lock().unwrap().get_mut(&key) {
-                        a.done.insert(item);
-                    }
-                } else {
-                    failed.push(format!("{}: {}", pl.item.path, res.unwrap_err()));
+        let mut finalize = |item: u32, r: std::result::Result<(), (bool, String)>| -> Result<bool> {
+            let pl = &plan[&item];
+            let part = paths::part_path(&pl.target);
+            let res = match r {
+                Ok(()) => {
+                    let fin = if decision.conflict == Conflict::Overwrite { pl.target.clone() } else { paths::unique(&pl.target) };
+                    std::fs::rename(&part, &fin).map(|_| fin).map_err(|e| format!("Can't save file: {e}"))
                 }
-                Ok(ok)
+                Err((disk, e)) => {
+                    let _ = std::fs::remove_file(&part);
+                    if disk {
+                        return Err(fatal(e));
+                    }
+                    Err(e)
+                }
             };
+            let ok = res.is_ok();
+            let _ = otx.send(Msg::Verified { item, ok, error: res.as_ref().err().cloned() });
+            let shown = res.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|_| pl.item.path.clone());
+            inner.emit(Event::ItemDone { transfer_id: tid.into(), path: shown, ok, error: res.as_ref().err().cloned() });
+            if ok {
+                if let Some(a) = inner.accepted.lock().unwrap().get_mut(&key) {
+                    a.done.insert(item);
+                }
+            } else {
+                failed.push(format!("{}: {}", pl.item.path, res.unwrap_err()));
+            }
+            Ok(ok)
+        };
         loop {
             let frame = tokio::select! {
                 f = read_frame(r) => f?,
@@ -1625,9 +1298,7 @@ async fn receive(
             }
             match frame {
                 Frame::Control(Msg::Start { item, offset }) => {
-                    let Some(pl) = plan.get(&item) else {
-                        bail!("protocol error: Start for unknown item")
-                    };
+                    let Some(pl) = plan.get(&item) else { bail!("protocol error: Start for unknown item") };
                     if cur.is_some() || offset > pl.item.size {
                         bail!("protocol error: bad Start");
                     }
@@ -1646,26 +1317,14 @@ async fn receive(
                         let _permit = permit;
                         write_part(part, offset, mtime, rx)
                     });
-                    cur = Some(Current {
-                        id: item,
-                        tx: Some(tx),
-                        job,
-                    });
+                    cur = Some(Current { id: item, tx: Some(tx), job });
                 }
                 Frame::Data { item, bytes } => {
-                    let c = cur
-                        .as_mut()
-                        .filter(|c| c.id == item)
-                        .context("protocol error: data for wrong item")?;
+                    let c = cur.as_mut().filter(|c| c.id == item).context("protocol error: data for wrong item")?;
                     let n = bytes.len() as u64;
                     if c.tx.as_ref().unwrap().send(bytes).await.is_err() {
                         let c = cur.take().unwrap();
-                        let err = c
-                            .job
-                            .await?
-                            .err()
-                            .map(|e| format!("{e:#}"))
-                            .unwrap_or_default();
+                        let err = c.job.await?.err().map(|e| format!("{e:#}")).unwrap_or_default();
                         let _ = std::fs::remove_file(paths::part_path(&plan[&item].target));
                         return Err(fatal(err));
                     }
@@ -1673,10 +1332,7 @@ async fn receive(
                     m.tick(inner, false);
                 }
                 Frame::Control(Msg::FileEnd { item, hash }) => {
-                    let mut c = cur
-                        .take()
-                        .filter(|c| c.id == item)
-                        .context("protocol error: FileEnd for wrong item")?;
+                    let mut c = cur.take().filter(|c| c.id == item).context("protocol error: FileEnd for wrong item")?;
                     drop(c.tx.take());
                     // Flush+verify runs off the receive loop so small files pipeline; renames stay serial below.
                     let dtx = dtx.clone();
@@ -1684,10 +1340,7 @@ async fn receive(
                     tokio::spawn(async move {
                         let r = match c.job.await {
                             Ok(Ok(h)) if h == hash => Ok(()),
-                            Ok(Ok(_)) => Err((
-                                false,
-                                "Corrupted in transit (hash mismatch); retry this file".to_string(),
-                            )),
+                            Ok(Ok(_)) => Err((false, "Corrupted in transit (hash mismatch); retry this file".to_string())),
                             Ok(Err(e)) => Err((true, format!("{e:#}"))),
                             Err(e) => Err((true, e.to_string())),
                         };
@@ -1717,21 +1370,11 @@ async fn receive(
     if let Some(c) = cur.take() {
         drop(c.tx);
         let _ = c.job.await; // partial stays on disk for resume unless cancelled
-        if result
-            .as_ref()
-            .err()
-            .and_then(|e| e.downcast_ref::<Fatal>())
-            .is_some()
-        {
+        if result.as_ref().err().and_then(|e| e.downcast_ref::<Fatal>()).is_some() {
             let _ = std::fs::remove_file(paths::part_path(&plan[&c.id].target));
         }
     }
-    let fin = result.as_ref().is_ok()
-        || result
-            .as_ref()
-            .err()
-            .and_then(|e| e.downcast_ref::<Fatal>())
-            .is_some();
+    let fin = result.as_ref().is_ok() || result.as_ref().err().and_then(|e| e.downcast_ref::<Fatal>()).is_some();
     if fin {
         inner.ctl.lock().unwrap().remove(tid);
         inner.accepted.lock().unwrap().remove(&key);
@@ -1765,8 +1408,5 @@ pub fn human(b: u64) -> String {
 
 /// Wall clock helper for apps building history entries.
 pub fn unix_now() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
 }

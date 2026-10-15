@@ -3,14 +3,10 @@
 use crate::identity::{fingerprint, Identity};
 use anyhow::{Context, Result};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
-use rustls::crypto::{
-    verify_tls12_signature, verify_tls13_signature, CryptoProvider, WebPkiSupportedAlgorithms,
-};
+use rustls::crypto::{verify_tls12_signature, verify_tls13_signature, CryptoProvider, WebPkiSupportedAlgorithms};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::server::danger::{ClientCertVerified, ClientCertVerifier};
-use rustls::{
-    ClientConfig, DigitallySignedStruct, DistinguishedName, ServerConfig, SignatureScheme,
-};
+use rustls::{ClientConfig, DigitallySignedStruct, DistinguishedName, ServerConfig, SignatureScheme};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
@@ -53,12 +49,7 @@ impl ClientCertVerifier for AnyCert {
     fn root_hint_subjects(&self) -> &[DistinguishedName] {
         &[]
     }
-    fn verify_client_cert(
-        &self,
-        _: &CertificateDer,
-        _: &[CertificateDer],
-        _: UnixTime,
-    ) -> Result<ClientCertVerified, rustls::Error> {
+    fn verify_client_cert(&self, _: &CertificateDer, _: &[CertificateDer], _: UnixTime) -> Result<ClientCertVerified, rustls::Error> {
         Ok(ClientCertVerified::assertion())
     }
     fn verify_tls12_signature(
@@ -114,17 +105,11 @@ pub struct PeerTls {
 }
 
 pub fn peer_of<D>(c: &rustls::ConnectionCommon<D>) -> Result<PeerTls> {
-    let cert = c
-        .peer_certificates()
-        .and_then(|v| v.first())
-        .context("peer sent no certificate")?;
+    let cert = c.peer_certificates().and_then(|v| v.first()).context("peer sent no certificate")?;
     let ekm = c.export_keying_material([0u8; 32], b"EXPORTER-dropbridge-sas", None)?;
     let d = Sha256::digest(ekm);
     let n = u32::from_be_bytes([d[0], d[1], d[2], d[3]]) % 1_000_000;
-    Ok(PeerTls {
-        fingerprint: fingerprint(cert),
-        sas: format!("{n:06}"),
-    })
+    Ok(PeerTls { fingerprint: fingerprint(cert), sas: format!("{n:06}") })
 }
 
 pub fn peer(s: &tokio_rustls::TlsStream<tokio::net::TcpStream>) -> Result<PeerTls> {

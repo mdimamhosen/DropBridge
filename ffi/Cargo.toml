@@ -1,0 +1,19 @@
+[package]
+name = "dropbridge-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "dropbridge_ffi"
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+
+[dependencies]
+dropbridge-core = { path = "../core" }
+serde_json = "1"
+thiserror = "2"
+uniffi = { version = "0.28", features = ["cli"] }

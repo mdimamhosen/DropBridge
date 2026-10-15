@@ -46,12 +46,7 @@ impl Peer {
         self.dir.path().join("in")
     }
     fn target(&self) -> Target {
-        Target {
-            host: "127.0.0.1".into(),
-            port: self.node.port(),
-            fingerprint: Some(self.node.fingerprint()),
-            token: None,
-        }
+        Target { host: "127.0.0.1".into(), port: self.node.port(), fingerprint: Some(self.node.fingerprint()), token: None }
     }
     fn wait(&self, secs: u64, f: impl Fn(&Event) -> bool) -> Event {
         let end = Instant::now() + Duration::from_secs(secs);
@@ -79,9 +74,7 @@ fn pair() -> (Peer, Peer) {
 }
 
 fn hash(p: &Path) -> String {
-    blake3::hash(&std::fs::read(p).unwrap())
-        .to_hex()
-        .to_string()
+    blake3::hash(&std::fs::read(p).unwrap()).to_hex().to_string()
 }
 
 fn ok(e: &Event) -> bool {
@@ -110,25 +103,14 @@ fn file_folder_and_text_both_directions() {
     std::fs::create_dir_all(tree.join("empty")).unwrap();
     std::fs::write(tree.join("zero.txt"), b"").unwrap();
     let old = std::time::SystemTime::UNIX_EPOCH + Duration::from_secs(1_600_000_000);
-    std::fs::File::options()
-        .write(true)
-        .open(&f)
-        .unwrap()
-        .set_modified(old)
-        .unwrap();
+    std::fs::File::options().write(true).open(&f).unwrap().set_modified(old).unwrap();
 
     a.node.send(
         b.target(),
         vec![
-            SendItem::Path {
-                path: f.to_string_lossy().into(),
-            },
-            SendItem::Path {
-                path: tree.to_string_lossy().into(),
-            },
-            SendItem::Text {
-                text: "hello ✓".into(),
-            },
+            SendItem::Path { path: f.to_string_lossy().into() },
+            SendItem::Path { path: tree.to_string_lossy().into() },
+            SendItem::Text { text: "hello ✓".into() },
         ],
     );
     let t = b.wait(10, |e| matches!(e, Event::TextReceived { .. }));
@@ -138,31 +120,15 @@ fn file_folder_and_text_both_directions() {
     let got = b.inbox().join("big.bin");
     assert_eq!(hash(&got), hash(&f));
     assert_eq!(std::fs::metadata(&got).unwrap().modified().unwrap(), old);
-    for rel in [
-        "Tree/sub/deep/x.txt",
-        "Tree/.hidden",
-        "Tree/ছবি 🎉 (1).txt",
-        "Tree/zero.txt",
-    ] {
-        assert_eq!(
-            hash(&b.inbox().join(rel)),
-            hash(&src.path().join(rel)),
-            "{rel}"
-        );
+    for rel in ["Tree/sub/deep/x.txt", "Tree/.hidden", "Tree/ছবি 🎉 (1).txt", "Tree/zero.txt"] {
+        assert_eq!(hash(&b.inbox().join(rel)), hash(&src.path().join(rel)), "{rel}");
     }
     assert!(b.inbox().join("Tree/empty").is_dir());
     // no partial files left behind
-    assert!(walk(&b.inbox())
-        .iter()
-        .all(|p| !p.to_string_lossy().ends_with(".dbpart")));
+    assert!(walk(&b.inbox()).iter().all(|p| !p.to_string_lossy().ends_with(".dbpart")));
 
     // and back the other way
-    b.node.send(
-        a.target(),
-        vec![SendItem::Path {
-            path: got.to_string_lossy().into(),
-        }],
-    );
+    b.node.send(a.target(), vec![SendItem::Path { path: got.to_string_lossy().into() }]);
     assert!(ok(&b.finished()));
     assert_eq!(hash(&a.inbox().join("big.bin")), hash(&f));
 }
@@ -186,71 +152,25 @@ fn unknown_sender_needs_approval_and_codes_match() {
     let f = src.path().join("a.txt");
     std::fs::write(&f, "x").unwrap();
 
-    a.node.send(
-        b.target(),
-        vec![SendItem::Path {
-            path: f.to_string_lossy().into(),
-        }],
-    );
-    let Event::AwaitingApproval { sas: s1, .. } =
-        a.wait(10, |e| matches!(e, Event::AwaitingApproval { .. }))
-    else {
-        unreachable!()
-    };
-    let Event::IncomingOffer {
-        transfer_id,
-        sas: s2,
-        trusted,
-        files,
-        ..
-    } = b.wait(10, |e| matches!(e, Event::IncomingOffer { .. }))
-    else {
+    a.node.send(b.target(), vec![SendItem::Path { path: f.to_string_lossy().into() }]);
+    let Event::AwaitingApproval { sas: s1, .. } = a.wait(10, |e| matches!(e, Event::AwaitingApproval { .. })) else { unreachable!() };
+    let Event::IncomingOffer { transfer_id, sas: s2, trusted, files, .. } = b.wait(10, |e| matches!(e, Event::IncomingOffer { .. })) else {
         unreachable!()
     };
     assert_eq!(s1, s2, "both screens show the same verification code");
     assert!(!trusted);
     assert_eq!(files, 1);
-    b.node.respond(
-        &transfer_id,
-        Decision {
-            accept: false,
-            trust: false,
-            conflict: Conflict::Rename,
-        },
-    );
-    assert!(
-        matches!(a.finished(), Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("declined"))
-    );
+    b.node.respond(&transfer_id, Decision { accept: false, trust: false, conflict: Conflict::Rename });
+    assert!(matches!(a.finished(), Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("declined")));
     assert!(!b.inbox().join("a.txt").exists());
 
     // accept + trust → next transfer is auto-accepted
     b.node.set_auto_accept(true);
-    a.node.send(
-        b.target(),
-        vec![SendItem::Path {
-            path: f.to_string_lossy().into(),
-        }],
-    );
-    let Event::IncomingOffer { transfer_id, .. } =
-        b.wait(10, |e| matches!(e, Event::IncomingOffer { .. }))
-    else {
-        unreachable!()
-    };
-    b.node.respond(
-        &transfer_id,
-        Decision {
-            accept: true,
-            trust: true,
-            conflict: Conflict::Rename,
-        },
-    );
+    a.node.send(b.target(), vec![SendItem::Path { path: f.to_string_lossy().into() }]);
+    let Event::IncomingOffer { transfer_id, .. } = b.wait(10, |e| matches!(e, Event::IncomingOffer { .. })) else { unreachable!() };
+    b.node.respond(&transfer_id, Decision { accept: true, trust: true, conflict: Conflict::Rename });
     assert!(ok(&a.finished()));
-    a.node.send(
-        b.target(),
-        vec![SendItem::Text {
-            text: "auto".into(),
-        }],
-    );
+    a.node.send(b.target(), vec![SendItem::Text { text: "auto".into() }]);
     assert!(ok(&a.finished()));
 }
 
@@ -259,19 +179,9 @@ fn impersonation_is_refused() {
     let (a, b) = pair();
     let mut t = b.target();
     t.fingerprint = Some("ab".repeat(32));
-    a.node.send(
-        t,
-        vec![SendItem::Text {
-            text: "secret".into(),
-        }],
-    );
-    assert!(
-        matches!(a.finished(), Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("impersonat"))
-    );
-    assert!(
-        b.rx.recv_timeout(Duration::from_millis(500)).is_err(),
-        "receiver saw nothing"
-    );
+    a.node.send(t, vec![SendItem::Text { text: "secret".into() }]);
+    assert!(matches!(a.finished(), Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("impersonat")));
+    assert!(b.rx.recv_timeout(Duration::from_millis(500)).is_err(), "receiver saw nothing");
 }
 
 #[test]
@@ -280,38 +190,30 @@ fn pairing_code_trusts_and_wrong_code_is_rejected() {
     let b = Peer::new("Bob", true);
     let mut t = b.target();
     t.token = Some("000000x".into());
-    a.node
-        .send(t.clone(), vec![SendItem::Text { text: "hi".into() }]);
-    assert!(
-        matches!(a.finished(), Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("pairing code"))
-    );
+    a.node.send(t.clone(), vec![SendItem::Text { text: "hi".into() }]);
+    assert!(matches!(a.finished(), Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("pairing code")));
 
     let uri = b.node.pairing_uri();
     let mut t = parse_pairing_uri(&uri).unwrap();
     t.host = "127.0.0.1".into();
-    assert_eq!(
-        t.fingerprint.as_deref(),
-        Some(b.node.fingerprint().as_str())
-    );
-    a.node
-        .send(t.clone(), vec![SendItem::Text { text: "hi".into() }]);
+    assert_eq!(t.fingerprint.as_deref(), Some(b.node.fingerprint().as_str()));
+    a.node.send(t.clone(), vec![SendItem::Text { text: "hi".into() }]);
     assert!(ok(&a.finished()), "token = trusted, auto-accepted");
-    assert!(b
-        .node
-        .devices()
-        .iter()
-        .any(|(fp, _)| *fp == a.node.fingerprint()));
+    assert!(b.node.devices().iter().any(|(fp, _)| *fp == a.node.fingerprint()));
     // tokens are one-time
-    a.node.send(
-        t,
-        vec![SendItem::Text {
-            text: "again".into(),
-        }],
-    );
+    a.node.send(t, vec![SendItem::Text { text: "again".into() }]);
     assert!(matches!(a.finished(), Event::Finished { ok: false, .. }));
 
-    let code = b.node.pairing_code();
-    assert_eq!(code.len(), 6);
+    // pairing with nothing to send: the short code alone pairs silently
+    let c = Peer::new("Carol", false);
+    let mut t = b.target();
+    t.token = Some(b.node.pairing_code());
+    c.node.send(t, vec![]);
+    assert!(ok(&c.finished()));
+    assert!(b.node.devices().iter().any(|(fp, _)| *fp == c.node.fingerprint()));
+    // without a code an empty offer is refused
+    a.node.send(b.target(), vec![]);
+    assert!(matches!(a.finished(), Event::Finished { ok: false, .. }));
 }
 
 #[test]
@@ -323,30 +225,16 @@ fn resumes_from_partial_and_restarts_on_mismatch() {
     let data = std::fs::read(&f).unwrap();
     std::fs::create_dir_all(b.inbox()).unwrap();
     std::fs::write(b.inbox().join(".r.bin.dbpart"), &data[..1_000_000]).unwrap();
-    a.node.send(
-        b.target(),
-        vec![SendItem::Path {
-            path: f.to_string_lossy().into(),
-        }],
-    );
-    let Event::Finished { ok, bytes, .. } = a.finished() else {
-        unreachable!()
-    };
+    a.node.send(b.target(), vec![SendItem::Path { path: f.to_string_lossy().into() }]);
+    let Event::Finished { ok, bytes, .. } = a.finished() else { unreachable!() };
     assert!(ok);
     assert_eq!(bytes, 2_000_000, "only the missing part was sent");
     assert_eq!(hash(&b.inbox().join("r.bin")), hash(&f));
 
     // stale partial from a different file: restart from 0, still correct
     std::fs::write(b.inbox().join(".r.bin.dbpart"), vec![7u8; 500_000]).unwrap();
-    a.node.send(
-        b.target(),
-        vec![SendItem::Path {
-            path: f.to_string_lossy().into(),
-        }],
-    );
-    let Event::Finished { ok, bytes, .. } = a.finished() else {
-        unreachable!()
-    };
+    a.node.send(b.target(), vec![SendItem::Path { path: f.to_string_lossy().into() }]);
+    let Event::Finished { ok, bytes, .. } = a.finished() else { unreachable!() };
     assert!(ok);
     assert_eq!(bytes, 3_000_000);
     assert_eq!(hash(&b.inbox().join("r (1).bin")), hash(&f));
@@ -394,21 +282,11 @@ fn reconnects_and_resumes_after_connection_loss() {
     random_file(&f, 20_000_000);
     let mut t = b.target();
     t.port = flaky_proxy(b.node.port(), 6_000_000);
-    a.node.send(
-        t,
-        vec![SendItem::Path {
-            path: f.to_string_lossy().into(),
-        }],
-    );
+    a.node.send(t, vec![SendItem::Path { path: f.to_string_lossy().into() }]);
     a.wait(30, |e| matches!(e, Event::Reconnecting { .. }));
-    let Event::Finished { ok, bytes, .. } = a.finished() else {
-        unreachable!()
-    };
+    let Event::Finished { ok, bytes, .. } = a.finished() else { unreachable!() };
     assert!(ok);
-    assert!(
-        bytes < 20_000_000,
-        "second attempt resumed instead of restarting (sent {bytes})"
-    );
+    assert!(bytes < 20_000_000, "second attempt resumed instead of restarting (sent {bytes})");
     assert_eq!(hash(&b.inbox().join("drop.bin")), hash(&f));
 }
 
@@ -421,43 +299,16 @@ fn conflict_policies() {
     std::fs::write(&f, "new").unwrap();
     std::fs::create_dir_all(b.inbox()).unwrap();
     std::fs::write(b.inbox().join("c.txt"), "old").unwrap();
-    for (policy, expect_old, extra) in [
-        (Conflict::Skip, "old", false),
-        (Conflict::Rename, "old", true),
-        (Conflict::Overwrite, "new", true),
-    ] {
+    for (policy, expect_old, extra) in [(Conflict::Skip, "old", false), (Conflict::Rename, "old", true), (Conflict::Overwrite, "new", true)]
+    {
         let _ = std::fs::remove_file(b.inbox().join("c (1).txt"));
-        a.node.send(
-            b.target(),
-            vec![SendItem::Path {
-                path: f.to_string_lossy().into(),
-            }],
-        );
-        let Event::IncomingOffer { transfer_id, .. } =
-            b.wait(10, |e| matches!(e, Event::IncomingOffer { .. }))
-        else {
-            unreachable!()
-        };
-        b.node.respond(
-            &transfer_id,
-            Decision {
-                accept: true,
-                trust: false,
-                conflict: policy,
-            },
-        );
+        a.node.send(b.target(), vec![SendItem::Path { path: f.to_string_lossy().into() }]);
+        let Event::IncomingOffer { transfer_id, .. } = b.wait(10, |e| matches!(e, Event::IncomingOffer { .. })) else { unreachable!() };
+        b.node.respond(&transfer_id, Decision { accept: true, trust: false, conflict: policy });
         a.finished();
         b.finished();
-        assert_eq!(
-            std::fs::read_to_string(b.inbox().join("c.txt")).unwrap(),
-            expect_old,
-            "{policy:?}"
-        );
-        assert_eq!(
-            b.inbox().join("c (1).txt").exists(),
-            extra && policy == Conflict::Rename,
-            "{policy:?}"
-        );
+        assert_eq!(std::fs::read_to_string(b.inbox().join("c.txt")).unwrap(), expect_old, "{policy:?}");
+        assert_eq!(b.inbox().join("c (1).txt").exists(), extra && policy == Conflict::Rename, "{policy:?}");
         std::fs::write(b.inbox().join("c.txt"), "old").unwrap();
     }
 }
@@ -468,32 +319,19 @@ fn pause_resume_and_cancel() {
     let src = tempfile::tempdir().unwrap();
     let f = src.path().join("p.bin");
     random_file(&f, 200_000_000);
-    let tid = a.node.send(
-        b.target(),
-        vec![SendItem::Path {
-            path: f.to_string_lossy().into(),
-        }],
-    );
-    a.wait(
-        10,
-        |e| matches!(e, Event::Progress { bytes_done, .. } if *bytes_done > 0),
-    );
+    let tid = a.node.send(b.target(), vec![SendItem::Path { path: f.to_string_lossy().into() }]);
+    a.wait(10, |e| matches!(e, Event::Progress { bytes_done, .. } if *bytes_done > 0));
     a.node.pause(&tid);
     a.wait(10, |e| matches!(e, Event::Progress { paused: true, .. }));
     std::thread::sleep(Duration::from_millis(300));
     a.node.resume(&tid);
     a.wait(10, |e| matches!(e, Event::Progress { paused: false, .. }));
     a.node.cancel(&tid);
-    assert!(
-        matches!(a.finished(), Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("Cancelled"))
-    );
+    assert!(matches!(a.finished(), Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("Cancelled")));
     assert!(matches!(b.finished(), Event::Finished { ok: false, .. }));
     std::thread::sleep(Duration::from_millis(200));
     assert!(!b.inbox().join("p.bin").exists());
-    assert!(
-        !b.inbox().join(".p.bin.dbpart").exists(),
-        "cancel removes partial data"
-    );
+    assert!(!b.inbox().join(".p.bin.dbpart").exists(), "cancel removes partial data");
 }
 
 #[test]
@@ -502,22 +340,12 @@ fn receiver_cancel_stops_sender() {
     let src = tempfile::tempdir().unwrap();
     let f = src.path().join("q.bin");
     random_file(&f, 300_000_000);
-    a.node.send(
-        b.target(),
-        vec![SendItem::Path {
-            path: f.to_string_lossy().into(),
-        }],
-    );
-    let Event::Progress { transfer_id, .. } = b.wait(
-        10,
-        |e| matches!(e, Event::Progress { bytes_done, .. } if *bytes_done > 0),
-    ) else {
+    a.node.send(b.target(), vec![SendItem::Path { path: f.to_string_lossy().into() }]);
+    let Event::Progress { transfer_id, .. } = b.wait(10, |e| matches!(e, Event::Progress { bytes_done, .. } if *bytes_done > 0)) else {
         unreachable!()
     };
     b.node.cancel(&transfer_id);
-    assert!(
-        matches!(a.finished(), Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("receiver cancelled"))
-    );
+    assert!(matches!(a.finished(), Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("receiver cancelled")));
 }
 
 #[test]
@@ -526,15 +354,8 @@ fn refuses_when_disk_too_small() {
     let src = tempfile::tempdir().unwrap();
     let f = src.path().join("huge.img");
     std::fs::File::create(&f).unwrap().set_len(1 << 52).unwrap(); // sparse 4 PB
-    a.node.send(
-        b.target(),
-        vec![SendItem::Path {
-            path: f.to_string_lossy().into(),
-        }],
-    );
-    assert!(
-        matches!(a.finished(), Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("Not enough space"))
-    );
+    a.node.send(b.target(), vec![SendItem::Path { path: f.to_string_lossy().into() }]);
+    assert!(matches!(a.finished(), Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("Not enough space")));
 }
 
 #[test]
@@ -544,35 +365,16 @@ fn many_small_files_and_concurrent_senders() {
     b.node.trust(&c.node.fingerprint(), "Carol").unwrap();
     let src = tempfile::tempdir().unwrap();
     for i in 0..1000 {
-        std::fs::write(
-            src.path().join(format!("small/{i:04}.txt")).tap_mkdir(),
-            format!("file {i}"),
-        )
-        .unwrap();
+        std::fs::write(src.path().join(format!("small/{i:04}.txt")).tap_mkdir(), format!("file {i}")).unwrap();
     }
     let big = src.path().join("c.bin");
     random_file(&big, 30_000_000);
-    a.node.send(
-        b.target(),
-        vec![SendItem::Path {
-            path: src.path().join("small").to_string_lossy().into(),
-        }],
-    );
-    c.node.send(
-        b.target(),
-        vec![SendItem::Path {
-            path: big.to_string_lossy().into(),
-        }],
-    );
-    let Event::Finished { ok, files_ok, .. } = a.finished() else {
-        unreachable!()
-    };
+    a.node.send(b.target(), vec![SendItem::Path { path: src.path().join("small").to_string_lossy().into() }]);
+    c.node.send(b.target(), vec![SendItem::Path { path: big.to_string_lossy().into() }]);
+    let Event::Finished { ok, files_ok, .. } = a.finished() else { unreachable!() };
     assert!(ok && files_ok == 1001, "1000 files + folder ({files_ok})");
     assert!(ok_(c.finished()));
-    assert_eq!(
-        std::fs::read_dir(b.inbox().join("small")).unwrap().count(),
-        1000
-    );
+    assert_eq!(std::fs::read_dir(b.inbox().join("small")).unwrap().count(), 1000);
     assert_eq!(hash(&b.inbox().join("c.bin")), hash(&big));
 }
 
@@ -594,8 +396,7 @@ impl TapMkdir for PathBuf {
 fn blocked_device_is_refused() {
     let (a, b) = pair();
     b.node.block(&a.node.fingerprint(), "Alice").unwrap();
-    a.node
-        .send(b.target(), vec![SendItem::Text { text: "x".into() }]);
+    a.node.send(b.target(), vec![SendItem::Text { text: "x".into() }]);
     assert!(matches!(a.finished(), Event::Finished { ok: false, .. }));
 }
 
@@ -606,63 +407,19 @@ fn malicious_offer_is_refused() {
     let id = Identity::generate().unwrap();
     b.node.trust(&id.fingerprint(), "Mallory").unwrap();
     let rt = tokio::runtime::Runtime::new().unwrap();
-    for evil in [
-        "../escape.txt",
-        "/etc/evil",
-        "a/../../escape.txt",
-        "x\u{0}y",
-    ] {
+    for evil in ["../escape.txt", "/etc/evil", "a/../../escape.txt", "x\u{0}y"] {
         let reply = rt.block_on(async {
-            let tcp = tokio::net::TcpStream::connect(("127.0.0.1", b.node.port()))
-                .await
-                .unwrap();
+            let tcp = tokio::net::TcpStream::connect(("127.0.0.1", b.node.port())).await.unwrap();
             let cfg = dropbridge::tls::client_config(&id).unwrap();
             let name = rustls::pki_types::ServerName::try_from("dropbridge").unwrap();
-            let mut s = tokio_rustls::TlsConnector::from(cfg)
-                .connect(name, tcp)
-                .await
-                .unwrap();
-            wire::write_msg(
-                &mut s,
-                &Msg::Hello {
-                    name: "Mallory".into(),
-                    kind: "cli".into(),
-                    version: 1,
-                },
-            )
-            .await
-            .unwrap();
+            let mut s = tokio_rustls::TlsConnector::from(cfg).connect(name, tcp).await.unwrap();
+            wire::write_msg(&mut s, &Msg::Hello { name: "Mallory".into(), kind: "cli".into(), version: 1 }).await.unwrap();
             wire::read_msg(&mut s).await.unwrap();
-            let item = Item {
-                id: 0,
-                kind: ItemKind::File,
-                path: evil.into(),
-                size: 4,
-                mtime: None,
-                text: None,
-            };
-            wire::write_msg(
-                &mut s,
-                &Msg::Offer {
-                    transfer_id: "t".into(),
-                    items: vec![item],
-                    token: None,
-                },
-            )
-            .await
-            .unwrap();
+            let item = Item { id: 0, kind: ItemKind::File, path: evil.into(), size: 4, mtime: None, text: None };
+            wire::write_msg(&mut s, &Msg::Offer { transfer_id: "t".into(), items: vec![item], token: None }).await.unwrap();
             wire::read_msg(&mut s).await.unwrap()
         });
-        assert!(
-            matches!(
-                reply,
-                Msg::Answer {
-                    accepted: false,
-                    ..
-                }
-            ),
-            "{evil:?} → {reply:?}"
-        );
+        assert!(matches!(reply, Msg::Answer { accepted: false, .. }), "{evil:?} → {reply:?}");
     }
     assert!(!b.dir.path().join("escape.txt").exists());
 }
@@ -673,9 +430,29 @@ fn discovery_finds_peer() {
     let b = Peer::with("Bob-disc", false, true);
     let id = b.node.fingerprint();
     let start = Instant::now();
-    a.wait(
-        10,
-        |e| matches!(e, Event::PeerFound { id: i, .. } if *i == id),
-    );
+    a.wait(10, |e| matches!(e, Event::PeerFound { id: i, .. } if *i == id));
     eprintln!("discovered in {:?}", start.elapsed());
+}
+
+#[test]
+fn retry_resends_only_missing_files() {
+    let (a, b) = pair();
+    let src = tempfile::tempdir().unwrap();
+    random_file(&src.path().join("set/one.txt"), 10);
+    random_file(&src.path().join("set/two.txt"), 20);
+    // receiver skips one.txt because it already exists, so it counts as not delivered
+    std::fs::create_dir_all(b.inbox().join("set")).unwrap();
+    std::fs::write(b.inbox().join("set/one.txt"), "old").unwrap();
+    b.node.set_auto_accept(false);
+    let tid = a.node.send(b.target(), vec![SendItem::Path { path: src.path().join("set").to_string_lossy().into() }]);
+    let Event::IncomingOffer { transfer_id, .. } = b.wait(10, |e| matches!(e, Event::IncomingOffer { .. })) else { unreachable!() };
+    b.node.respond(&transfer_id, Decision { accept: true, trust: false, conflict: Conflict::Skip });
+    assert!(matches!(a.finished(), Event::Finished { ok: false, ref failed, .. } if failed.len() == 1));
+    std::fs::remove_file(b.inbox().join("set/one.txt")).unwrap();
+    b.node.set_auto_accept(true);
+    assert!(a.node.retry(&tid).is_some());
+    let Event::Finished { ok, files_ok, .. } = a.finished() else { unreachable!() };
+    assert!(ok && files_ok == 1);
+    assert_eq!(hash(&b.inbox().join("set/one.txt")), hash(&src.path().join("set/one.txt")));
+    assert!(a.node.retry(&tid).is_none());
 }

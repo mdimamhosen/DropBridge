@@ -13,40 +13,16 @@ pub const MAX_FRAME: usize = 64 << 20;
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "t")]
 pub enum Msg {
-    Hello {
-        name: String,
-        kind: String,
-        version: u32,
-    },
-    Offer {
-        transfer_id: String,
-        items: Vec<Item>,
-        token: Option<String>,
-    },
-    Answer {
-        accepted: bool,
-        items: Vec<ItemAnswer>,
-        reason: Option<String>,
-    },
-    Start {
-        item: u32,
-        offset: u64,
-    },
-    FileEnd {
-        item: u32,
-        hash: String,
-    },
-    Verified {
-        item: u32,
-        ok: bool,
-        error: Option<String>,
-    },
+    Hello { name: String, kind: String, version: u32 },
+    Offer { transfer_id: String, items: Vec<Item>, token: Option<String> },
+    Answer { accepted: bool, items: Vec<ItemAnswer>, reason: Option<String> },
+    Start { item: u32, offset: u64 },
+    FileEnd { item: u32, hash: String },
+    Verified { item: u32, ok: bool, error: Option<String> },
     Pause,
     Resume,
     Done,
-    Cancel {
-        reason: String,
-    },
+    Cancel { reason: String },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
@@ -140,10 +116,7 @@ mod tests {
         let (mut a, mut b) = tokio::io::duplex(1 << 16);
         write_msg(&mut a, &Msg::Pause).await.unwrap();
         write_data(&mut a, 7, b"hello").await.unwrap();
-        assert!(matches!(
-            read_frame(&mut b).await.unwrap(),
-            Frame::Control(Msg::Pause)
-        ));
+        assert!(matches!(read_frame(&mut b).await.unwrap(), Frame::Control(Msg::Pause)));
         match read_frame(&mut b).await.unwrap() {
             Frame::Data { item, bytes } => assert_eq!((item, bytes.as_slice()), (7, &b"hello"[..])),
             _ => panic!(),
@@ -155,9 +128,7 @@ mod tests {
         a.write_all(&[9, 0, 0, 0, 0]).await.unwrap();
         assert!(read_frame(&mut b).await.is_err());
         let (mut a, mut b) = tokio::io::duplex(64);
-        a.write_all(&[1, 0, 0, 0, 3, b'{', b'x', b'}'])
-            .await
-            .unwrap();
+        a.write_all(&[1, 0, 0, 0, 3, b'{', b'x', b'}']).await.unwrap();
         assert!(read_frame(&mut b).await.is_err());
     }
 }

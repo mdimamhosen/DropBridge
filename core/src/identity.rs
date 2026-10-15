@@ -13,10 +13,7 @@ pub struct Identity {
 impl Identity {
     pub fn generate() -> Result<Self> {
         let ck = rcgen::generate_simple_self_signed(vec!["dropbridge".to_string()])?;
-        Ok(Self {
-            cert: ck.cert.der().to_vec(),
-            key: ck.key_pair.serialize_der(),
-        })
+        Ok(Self { cert: ck.cert.der().to_vec(), key: ck.key_pair.serialize_der() })
     }
 
     pub fn to_secret(&self) -> String {
@@ -24,14 +21,8 @@ impl Identity {
     }
 
     pub fn from_secret(s: &str) -> Result<Self> {
-        let (c, k) = s
-            .trim()
-            .split_once('.')
-            .context("stored identity is malformed")?;
-        Ok(Self {
-            cert: hex::decode(c)?,
-            key: hex::decode(k)?,
-        })
+        let (c, k) = s.trim().split_once('.').context("stored identity is malformed")?;
+        Ok(Self { cert: hex::decode(c)?, key: hex::decode(k)? })
     }
 
     pub fn fingerprint(&self) -> String {

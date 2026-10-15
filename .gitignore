@@ -9,3 +9,6 @@ target/
 /desktop/src-tauri/target/
 /desktop/src-tauri/gen/
 node_modules/
+/android/app/src/main/java/uniffi/
+/android/local.properties
+*.apk

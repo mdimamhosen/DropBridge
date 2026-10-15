@@ -26,36 +26,20 @@ impl Delegate for Chan {
 }
 
 fn home() -> PathBuf {
-    PathBuf::from(
-        std::env::var_os("HOME")
-            .or_else(|| std::env::var_os("USERPROFILE"))
-            .unwrap_or_default(),
-    )
+    PathBuf::from(std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).unwrap_or_default())
 }
 
-fn start(
-    port: u16,
-    dir: Option<String>,
-    discovery: bool,
-    auto: bool,
-) -> Result<(Node, Receiver<Event>)> {
+fn start(port: u16, dir: Option<String>, discovery: bool, auto: bool) -> Result<(Node, Receiver<Event>)> {
     start_as(".dropbridge-cli", port, dir, discovery, auto)
 }
 
-fn start_as(
-    profile: &str,
-    port: u16,
-    dir: Option<String>,
-    discovery: bool,
-    auto: bool,
-) -> Result<(Node, Receiver<Event>)> {
+fn start_as(profile: &str, port: u16, dir: Option<String>, discovery: bool, auto: bool) -> Result<(Node, Receiver<Event>)> {
     let data = home().join(profile);
     std::fs::create_dir_all(&data)?;
     let idf = data.join("identity");
     let identity = std::fs::read_to_string(&idf).unwrap_or_default();
     let (tx, rx) = channel();
-    let download =
-        dir.unwrap_or_else(|| home().join("Downloads/DropBridge").to_string_lossy().into());
+    let download = dir.unwrap_or_else(|| home().join("Downloads/DropBridge").to_string_lossy().into());
     let cfg = NodeConfig {
         name: hostname(),
         kind: "cli".into(),
@@ -92,19 +76,12 @@ fn flag(args: &mut Vec<String>, name: &str) -> Option<String> {
 }
 
 fn has(args: &mut Vec<String>, name: &str) -> bool {
-    args.iter()
-        .position(|a| a == name)
-        .map(|i| args.remove(i))
-        .is_some()
+    args.iter().position(|a| a == name).map(|i| args.remove(i)).is_some()
 }
 
 fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
-    let cmd = if args.is_empty() {
-        String::new()
-    } else {
-        args.remove(0)
-    };
+    let cmd = if args.is_empty() { String::new() } else { args.remove(0) };
     let r = match cmd.as_str() {
         "receive" => receive(args),
         "send" => send(args),
@@ -122,23 +99,8 @@ fn main() {
 }
 
 fn print_progress(e: &Event) {
-    if let Event::Progress {
-        bytes_done,
-        bytes_total,
-        speed_bps,
-        avg_bps,
-        eta_secs,
-        files_done,
-        files_total,
-        paused,
-        ..
-    } = e
-    {
-        let pct = if *bytes_total > 0 {
-            *bytes_done as f64 * 100.0 / *bytes_total as f64
-        } else {
-            100.0
-        };
+    if let Event::Progress { bytes_done, bytes_total, speed_bps, avg_bps, eta_secs, files_done, files_total, paused, .. } = e {
+        let pct = if *bytes_total > 0 { *bytes_done as f64 * 100.0 / *bytes_total as f64 } else { 100.0 };
         print!(
             "\r  {pct:5.1}%  {} / {}  {}/s (avg {}/s)  files {files_done}/{files_total}  ETA {eta_secs}s{}   ",
             human(*bytes_done),
@@ -152,33 +114,14 @@ fn print_progress(e: &Event) {
 }
 
 fn print_finished(e: &Event) -> bool {
-    let Event::Finished {
-        ok,
-        error,
-        files_ok,
-        failed,
-        bytes,
-        secs,
-        avg_bps,
-        peak_bps,
-        ..
-    } = e
-    else {
+    let Event::Finished { ok, error, files_ok, failed, bytes, secs, avg_bps, peak_bps, .. } = e else {
         return false;
     };
     println!();
     if *ok {
-        println!(
-            "✓ done: {files_ok} item(s), {} in {secs:.1}s — avg {}/s, peak {}/s",
-            human(*bytes),
-            human(*avg_bps),
-            human(*peak_bps)
-        );
+        println!("✓ done: {files_ok} item(s), {} in {secs:.1}s — avg {}/s, peak {}/s", human(*bytes), human(*avg_bps), human(*peak_bps));
     } else {
-        println!(
-            "✗ {}",
-            error.clone().unwrap_or_else(|| "some files failed".into())
-        );
+        println!("✗ {}", error.clone().unwrap_or_else(|| "some files failed".into()));
         for f in failed {
             println!("  failed: {f}");
         }
@@ -188,47 +131,20 @@ fn print_finished(e: &Event) -> bool {
 
 fn receive(mut args: Vec<String>) -> Result<()> {
     let dir = flag(&mut args, "--dir");
-    let port = flag(&mut args, "--port")
-        .map(|p| p.parse())
-        .transpose()?
-        .unwrap_or(0);
+    let port = flag(&mut args, "--port").map(|p| p.parse()).transpose()?.unwrap_or(0);
     let yes = has(&mut args, "--yes");
     let (node, rx) = start(port, dir, true, true)?;
-    println!(
-        "Receiving as \"{}\" on port {} (addresses: {})",
-        hostname(),
-        node.port(),
-        local_ips().join(", ")
-    );
+    println!("Receiving as \"{}\" on port {} (addresses: {})", hostname(), node.port(), local_ips().join(", "));
     println!("Pairing link (valid 5 min): {}", node.pairing_uri());
     println!("Pairing code: {}", node.pairing_code());
     let stdin = std::io::stdin();
     for e in rx {
         match &e {
-            Event::IncomingOffer {
-                transfer_id,
-                from_name,
-                from_id,
-                trusted,
-                sas,
-                files,
-                bytes,
-                texts,
-                preview,
-                ..
-            } => {
-                let extra = if *texts > 0 {
-                    format!(" + {texts} text")
-                } else {
-                    String::new()
-                };
+            Event::IncomingOffer { transfer_id, from_name, from_id, trusted, sas, files, bytes, texts, preview, .. } => {
+                let extra = if *texts > 0 { format!(" + {texts} text") } else { String::new() };
                 println!(
                     "\n{} \"{from_name}\" wants to send {files} file(s), {}{extra}",
-                    if *trusted {
-                        "Trusted"
-                    } else {
-                        "UNKNOWN device"
-                    },
+                    if *trusted { "Trusted" } else { "UNKNOWN device" },
                     human(*bytes)
                 );
                 for p in preview {
@@ -236,37 +152,22 @@ fn receive(mut args: Vec<String>) -> Result<()> {
                 }
                 println!("  Verification code: {sas} (must match the sender's screen)");
                 let d = if yes {
-                    Decision {
-                        accept: true,
-                        trust: false,
-                        conflict: Conflict::Rename,
-                    }
+                    Decision { accept: true, trust: false, conflict: Conflict::Rename }
                 } else {
                     print!("  Accept? [y]es / [t]rust & accept / [N]o: ");
                     std::io::stdout().flush()?;
                     let mut l = String::new();
                     stdin.lock().read_line(&mut l)?;
                     let a = l.trim().to_lowercase();
-                    Decision {
-                        accept: a == "y" || a == "t",
-                        trust: a == "t",
-                        conflict: Conflict::Rename,
-                    }
+                    Decision { accept: a == "y" || a == "t", trust: a == "t", conflict: Conflict::Rename }
                 };
                 if d.trust {
                     println!("  Trusted {from_name} ({}…)", &from_id[..12]);
                 }
                 node.respond(transfer_id, d);
             }
-            Event::TextReceived {
-                from_name, text, ..
-            } => println!("\nText from {from_name}:\n{text}"),
-            Event::ItemDone {
-                path,
-                ok: false,
-                error,
-                ..
-            } => println!("\n  ✗ {path}: {}", error.clone().unwrap_or_default()),
+            Event::TextReceived { from_name, text, .. } => println!("\nText from {from_name}:\n{text}"),
+            Event::ItemDone { path, ok: false, error, .. } => println!("\n  ✗ {path}: {}", error.clone().unwrap_or_default()),
             Event::Finished { .. } => {
                 print_finished(&e);
             }
@@ -283,24 +184,11 @@ fn resolve_target(t: &str) -> Result<Target> {
     }
     if let Some((h, p)) = t.rsplit_once(':') {
         if let Ok(port) = p.parse() {
-            return Ok(Target {
-                host: h.into(),
-                port,
-                fingerprint: None,
-                token: None,
-            });
+            return Ok(Target { host: h.into(), port, fingerprint: None, token: None });
         }
     }
-    let p = peers()?
-        .into_iter()
-        .find(|p| p.1.eq_ignore_ascii_case(t))
-        .with_context(|| format!("No nearby device named {t:?}"))?;
-    Ok(Target {
-        host: p.2.join(","),
-        port: p.3,
-        fingerprint: Some(p.0),
-        token: None,
-    })
+    let p = peers()?.into_iter().find(|p| p.1.eq_ignore_ascii_case(t)).with_context(|| format!("No nearby device named {t:?}"))?;
+    Ok(Target { host: p.2.join(","), port: p.3, fingerprint: Some(p.0), token: None })
 }
 
 fn send(mut args: Vec<String>) -> Result<()> {
@@ -313,10 +201,7 @@ fn send(mut args: Vec<String>) -> Result<()> {
     if code.is_some() {
         target.token = code;
     }
-    let mut items: Vec<SendItem> = args
-        .into_iter()
-        .map(|p| SendItem::Path { path: p })
-        .collect();
+    let mut items: Vec<SendItem> = args.into_iter().map(|p| SendItem::Path { path: p }).collect();
     items.extend(text.map(|text| SendItem::Text { text }));
     if items.is_empty() {
         bail!("nothing to send");
@@ -347,34 +232,12 @@ fn send(mut args: Vec<String>) -> Result<()> {
 type Found = (String, String, Vec<String>, u16);
 
 fn peers() -> Result<Vec<Found>> {
-    let (_node, rx) = start(
-        0,
-        Some(
-            std::env::temp_dir()
-                .join("dropbridge-scan")
-                .to_string_lossy()
-                .into(),
-        ),
-        true,
-        false,
-    )?;
+    let (_node, rx) = start(0, Some(std::env::temp_dir().join("dropbridge-scan").to_string_lossy().into()), true, false)?;
     let end = Instant::now() + Duration::from_secs(3);
     let mut out = Vec::new();
     while let Ok(e) = rx.recv_timeout(end.saturating_duration_since(Instant::now())) {
-        if let Event::PeerFound {
-            id,
-            name,
-            kind,
-            addrs,
-            port,
-            trusted,
-        } = e
-        {
-            println!(
-                "{name:24} {kind:8} {}:{port} {}",
-                addrs.first().cloned().unwrap_or_default(),
-                if trusted { "trusted" } else { "" }
-            );
+        if let Event::PeerFound { id, name, kind, addrs, port, trusted } = e {
+            println!("{name:24} {kind:8} {}:{port} {}", addrs.first().cloned().unwrap_or_default(), if trusted { "trusted" } else { "" });
             out.push((id, name, addrs, port));
         }
     }
@@ -394,11 +257,7 @@ fn usage() -> (f64, f64) {
         libc::getrusage(libc::RUSAGE_SELF, &mut u);
         let t = |v: libc::timeval| v.tv_sec as f64 + v.tv_usec as f64 / 1e6;
         // ru_maxrss is bytes on macOS, KiB on Linux.
-        let rss = if cfg!(target_os = "macos") {
-            u.ru_maxrss as f64 / 1048576.0
-        } else {
-            u.ru_maxrss as f64 / 1024.0
-        };
+        let rss = if cfg!(target_os = "macos") { u.ru_maxrss as f64 / 1048576.0 } else { u.ru_maxrss as f64 / 1024.0 };
         (t(u.ru_utime) + t(u.ru_stime), rss)
     }
     #[cfg(not(unix))]
@@ -434,10 +293,7 @@ fn small_files(dir: &Path, n: usize) -> Result<PathBuf> {
     if !p.exists() {
         std::fs::create_dir_all(&p)?;
         for i in 0..n {
-            std::fs::write(
-                p.join(format!("f{i:05}.txt")),
-                format!("small file {i} ").repeat(1 + i % 400),
-            )?;
+            std::fs::write(p.join(format!("f{i:05}.txt")), format!("small file {i} ").repeat(1 + i % 400))?;
         }
     }
     Ok(p)
@@ -461,19 +317,8 @@ fn bench(mut args: Vec<String>) -> Result<()> {
     let (recv, target) = match &to {
         Some(t) => (None, resolve_target(t)?),
         None => {
-            let (n, rx) = start_as(
-                ".dropbridge-cli-bench",
-                0,
-                Some(inbox.to_string_lossy().into()),
-                false,
-                true,
-            )?;
-            let t = Target {
-                host: "127.0.0.1".into(),
-                port: n.port(),
-                fingerprint: Some(n.fingerprint()),
-                token: None,
-            };
+            let (n, rx) = start_as(".dropbridge-cli-bench", 0, Some(inbox.to_string_lossy().into()), false, true)?;
+            let t = Target { host: "127.0.0.1".into(), port: n.port(), fingerprint: Some(n.fingerprint()), token: None };
             (Some((n, rx)), t)
         }
     };
@@ -487,12 +332,7 @@ fn bench(mut args: Vec<String>) -> Result<()> {
         let _ = std::fs::remove_dir_all(&inbox); // keep disk use flat across cases
         let (c0, _) = usage();
         let t0 = Instant::now();
-        sender.send(
-            target.clone(),
-            vec![SendItem::Path {
-                path: path.to_string_lossy().into(),
-            }],
-        );
+        sender.send(target.clone(), vec![SendItem::Path { path: path.to_string_lossy().into() }]);
         let fin = loop {
             if let e @ Event::Finished { .. } = srx.recv()? {
                 break e;
@@ -500,17 +340,7 @@ fn bench(mut args: Vec<String>) -> Result<()> {
         };
         let wall = t0.elapsed().as_secs_f64();
         let (c1, rss) = usage();
-        let Event::Finished {
-            ok,
-            error,
-            avg_bps,
-            peak_bps,
-            failed,
-            ..
-        } = fin
-        else {
-            unreachable!()
-        };
+        let Event::Finished { ok, error, avg_bps, peak_bps, failed, .. } = fin else { unreachable!() };
         if !ok {
             bail!("{name}: {}", error.unwrap_or_default());
         }

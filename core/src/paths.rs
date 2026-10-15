@@ -28,16 +28,11 @@ pub fn sanitize(rel: &str) -> Result<PathBuf> {
 
 #[cfg(windows)]
 fn platform_name(c: &str) -> String {
-    let mut n: String = c
-        .chars()
-        .map(|ch| if "<>:\"|?*".contains(ch) { '_' } else { ch })
-        .collect();
+    let mut n: String = c.chars().map(|ch| if "<>:\"|?*".contains(ch) { '_' } else { ch }).collect();
     n = n.trim_end_matches(['.', ' ']).to_string();
     let stem = n.split('.').next().unwrap_or("").to_ascii_uppercase();
     let reserved = ["CON", "PRN", "AUX", "NUL"].contains(&stem.as_str())
-        || ((stem.starts_with("COM") || stem.starts_with("LPT"))
-            && stem.len() == 4
-            && stem.as_bytes()[3].is_ascii_digit());
+        || ((stem.starts_with("COM") || stem.starts_with("LPT")) && stem.len() == 4 && stem.as_bytes()[3].is_ascii_digit());
     if reserved || n.is_empty() {
         n.insert(0, '_');
     }
@@ -65,15 +60,8 @@ pub fn resolve(root: &Path, rel: &Path) -> Result<PathBuf> {
 
 /// Hidden partial file next to the target, so incomplete data never looks complete.
 pub fn part_path(target: &Path) -> PathBuf {
-    let name = target
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let base = if name.len() > 240 {
-        blake3::hash(name.as_bytes()).to_hex()[..32].to_string()
-    } else {
-        name
-    };
+    let name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let base = if name.len() > 240 { blake3::hash(name.as_bytes()).to_hex()[..32].to_string() } else { name };
     target.with_file_name(format!(".{base}.dbpart"))
 }
 
@@ -82,18 +70,9 @@ pub fn unique(target: &Path) -> PathBuf {
     if std::fs::symlink_metadata(target).is_err() {
         return target.to_path_buf();
     }
-    let stem = target
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let ext = target
-        .extension()
-        .map(|e| format!(".{}", e.to_string_lossy()))
-        .unwrap_or_default();
-    (1..)
-        .map(|n| target.with_file_name(format!("{stem} ({n}){ext}")))
-        .find(|p| std::fs::symlink_metadata(p).is_err())
-        .unwrap()
+    let stem = target.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let ext = target.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    (1..).map(|n| target.with_file_name(format!("{stem} ({n}){ext}"))).find(|p| std::fs::symlink_metadata(p).is_err()).unwrap()
 }
 
 #[cfg(test)]
@@ -102,42 +81,21 @@ mod tests {
 
     #[test]
     fn rejects_traversal_and_junk() {
-        for bad in [
-            "",
-            "/etc/passwd",
-            "../x",
-            "a/../../x",
-            "a/./b",
-            "a//b",
-            "..",
-            "a\\..\\b",
-            "x\0y",
-            "a\nb",
-            "\u{1b}[31m",
-            &"a".repeat(256),
-        ] {
+        for bad in
+            ["", "/etc/passwd", "../x", "a/../../x", "a/./b", "a//b", "..", "a\\..\\b", "x\0y", "a\nb", "\u{1b}[31m", &"a".repeat(256)]
+        {
             assert!(sanitize(bad).is_err(), "{bad:?} should be rejected");
         }
     }
 
     #[test]
     fn accepts_real_names() {
-        for good in [
-            "photo.jpg",
-            ".hidden",
-            "Folder/sub/file.tar.gz",
-            "ছবি/ফাইল.txt",
-            "emoji 🎉 (1).png",
-            "a b c/ d",
-            &"a".repeat(255),
-        ] {
+        for good in ["photo.jpg", ".hidden", "Folder/sub/file.tar.gz", "ছবি/ফাইল.txt", "emoji 🎉 (1).png", "a b c/ d", &"a".repeat(255)]
+        {
             assert!(sanitize(good).is_ok(), "{good:?} should be accepted");
         }
         // NFD input becomes NFC so macOS/Android names compare equal
-        assert_eq!(
-            sanitize("e\u{301}.txt").unwrap(),
-            PathBuf::from("\u{e9}.txt")
-        );
+        assert_eq!(sanitize("e\u{301}.txt").unwrap(), PathBuf::from("\u{e9}.txt"));
     }
 
     #[test]
@@ -152,12 +110,6 @@ mod tests {
         assert_eq!(unique(&t), t);
         std::fs::write(&t, "1").unwrap();
         assert_eq!(unique(&t), d.path().join("a (1).txt"));
-        assert!(
-            part_path(&d.path().join("n".repeat(255)))
-                .file_name()
-                .unwrap()
-                .len()
-                < 255
-        );
+        assert!(part_path(&d.path().join("n".repeat(255))).file_name().unwrap().len() < 255);
     }
 }
