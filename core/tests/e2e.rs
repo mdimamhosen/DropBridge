@@ -349,6 +349,7 @@ fn receiver_cancel_stops_sender() {
 }
 
 #[test]
+#[cfg(unix)] // needs a sparse file larger than the disk
 fn refuses_when_disk_too_small() {
     let (a, b) = pair();
     let src = tempfile::tempdir().unwrap();
@@ -425,6 +426,7 @@ fn malicious_offer_is_refused() {
 }
 
 #[test]
+#[ignore = "needs multicast on the host; run with --include-ignored (CI runners often block it)"]
 fn discovery_finds_peer() {
     let a = Peer::with("Alice-disc", false, true);
     let b = Peer::with("Bob-disc", false, true);

@@ -1,0 +1,41 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+
+jobs:
+  core:
+    strategy:
+      fail-fast: false
+      matrix: { os: [ubuntu-22.04, macos-latest, windows-latest] }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: "clippy, rustfmt" }
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+        if: runner.os == 'Linux'
+      - run: cargo clippy -p dropbridge-core -p dropbridge-cli -p dropbridge-ffi --all-targets -- -D warnings
+      - run: cargo test -p dropbridge-core -p dropbridge-cli
+
+  desktop:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config
+      - run: cargo clippy -p dropbridge-desktop -- -D warnings
+
+  android:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android" }
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - run: cargo install cargo-ndk --locked
+      - run: scripts/build-android.sh debug

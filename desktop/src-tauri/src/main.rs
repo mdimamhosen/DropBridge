@@ -125,7 +125,7 @@ fn device_name() -> String {
 
 /// Private key lives in the OS credential store (Keychain / Credential Manager / Secret Service).
 /// Linux machines without a Secret Service fall back to a 0600 file.
-fn load_identity(data: &PathBuf) -> String {
+fn load_identity(data: &std::path::Path) -> String {
     if let Ok(e) = keyring::Entry::new("dev.dropbridge.app", "identity") {
         if let Ok(s) = e.get_password() {
             return s;
@@ -134,7 +134,7 @@ fn load_identity(data: &PathBuf) -> String {
     std::fs::read_to_string(data.join("identity")).unwrap_or_default()
 }
 
-fn store_identity(data: &PathBuf, secret: &str) {
+fn store_identity(data: &std::path::Path, secret: &str) {
     if keyring::Entry::new("dev.dropbridge.app", "identity").and_then(|e| e.set_password(secret)).is_ok() {
         return;
     }

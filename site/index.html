@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DropBridge — share files between Android and your computer</title>
+<meta name="description" content="AirDrop-style file sharing between Android, macOS, Windows and Linux. Direct over Wi-Fi, end-to-end encrypted, no account, no cloud. Free and open source." />
+<meta property="og:title" content="DropBridge" />
+<meta property="og:description" content="Send files, folders and text between Android and your computer. Direct, encrypted, no account." />
+<meta property="og:image" content="icon.png" />
+<link rel="icon" href="icon.png" />
+<style>
+  :root {
+    --bg: #ffffff; --bg2: #f4f6fa; --text: #12151b; --muted: #5a6272; --line: #e3e7ee;
+    --accent: #2563eb; --accent2: #0ea5e9; --ink: #fff; --ok: #15803d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0e1116; --bg2: #161a21; --text: #eef0f4; --muted: #a5adbb; --line: #262c36; --accent: #5b8cff; --accent2: #38bdf8; --ink: #0b0d10; --ok: #4ade80; }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif; }
+  a { color: var(--accent); }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 16px; }
+  nav { display: flex; justify-content: space-between; align-items: center; padding: 18px 0; }
+  nav .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 19px; color: var(--text); text-decoration: none; }
+  nav .links { display: flex; gap: 18px; font-size: 15px; }
+  nav .links a { color: var(--muted); text-decoration: none; }
+  nav .links a:hover { color: var(--text); }
+  .hero { text-align: center; padding: 56px 0 40px; }
+  .hero h1 { font-size: clamp(34px, 6vw, 58px); line-height: 1.08; margin: 0 0 18px; letter-spacing: -0.02em; }
+  .hero h1 span { background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero p { color: var(--muted); font-size: clamp(17px, 2.4vw, 20px); max-width: 640px; margin: 0 auto 28px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 13px 22px; border-radius: 12px; font-weight: 600; text-decoration: none; border: 1px solid var(--line); color: var(--text); background: var(--bg); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--ink); }
+  .btn:focus-visible, a:focus-visible { outline: 3px solid var(--accent2); outline-offset: 3px; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .small { color: var(--muted); font-size: 14px; margin-top: 12px; }
+  section { padding: 56px 0; }
+  section.alt { background: var(--bg2); }
+  h2 { font-size: clamp(26px, 4vw, 36px); margin: 0 0 8px; letter-spacing: -0.01em; }
+  .lead { color: var(--muted); margin: 0 0 30px; }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .card { background: var(--bg); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
+  section.alt .card { background: var(--bg); }
+  .card h3 { margin: 0 0 6px; font-size: 18px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15.5px; }
+  .step { display: flex; gap: 14px; }
+  .num { flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--accent); color: var(--ink); display: grid; place-items: center; font-weight: 700; }
+  .dl { display: flex; flex-direction: column; gap: 10px; }
+  .dl .os { font-weight: 700; font-size: 18px; }
+  .dl .req { color: var(--muted); font-size: 14px; }
+  .dl .files { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
+  .dl .files a { font-size: 14px; padding: 8px 12px; }
+  .dl.mine { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  .table-wrap { overflow-x: auto; }
+  details { border-bottom: 1px solid var(--line); padding: 14px 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  details p { color: var(--muted); margin: 8px 0 0; }
+  code { background: var(--bg2); padding: 2px 6px; border-radius: 6px; font-size: 14px; }
+  footer { padding: 34px 0; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
+  footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  @media (max-width: 560px) { nav .links a.opt { display: none; } }
+</style>
+</head>
+<body>
+<header class="wrap">
+  <nav aria-label="Main">
+    <a class="brand" href="#"><img src="icon.png" alt="" width="32" height="32" />DropBridge</a>
+    <div class="links">
+      <a href="#how" class="opt">How it works</a>
+      <a href="#security" class="opt">Security</a>
+      <a href="#download">Download</a>
+      <a href="https://github.com/mdimamhosen/DropBridge">GitHub</a>
+    </div>
+  </nav>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <h1>AirDrop for <span>Android and every computer</span></h1>
+    <p>Send photos, videos, folders, huge files and text between your phone and your Mac, Windows or Linux PC. Straight over your Wi-Fi, encrypted, with no account and no cloud.</p>
+    <div class="cta">
+      <a class="btn primary" id="hero-dl" href="#download">Download — free</a>
+      <a class="btn" href="https://github.com/mdimamhosen/DropBridge">View source</a>
+    </div>
+    <p class="small">Open source (Apache-2.0) · No sign-up · Works offline on the same network</p>
+  </div>
+
+  <section id="how" class="alt">
+    <div class="wrap">
+      <h2>Three steps. That's it.</h2>
+      <p class="lead">No cables, no pairing menus, no uploading.</p>
+      <div class="grid">
+        <div class="card step"><div class="num">1</div><div><h3>Open it on both</h3><p>Same Wi-Fi (or your phone's hotspot). Devices appear on their own in about a second.</p></div></div>
+        <div class="card step"><div class="num">2</div><div><h3>Pick &amp; tap</h3><p>Drop files on a device on your computer, or choose files, photos, a folder or text on your phone. Also works from any app's <b>Share</b> menu.</p></div></div>
+        <div class="card step"><div class="num">3</div><div><h3>Accept</h3><p>The other device asks first. New device? Check both screens show the same 6-digit code. Trust it once and skip that next time.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Built for big, real-world transfers</h2>
+      <p class="lead">Everything you expect, nothing you have to configure.</p>
+      <div class="grid">
+        <div class="card"><h3>Any size</h3><p>Streams instead of loading files into memory. Tested with 10 GB files at flat ~40 MB memory.</p></div>
+        <div class="card"><h3>Whole folders</h3><p>Keeps folder structure, empty folders, hidden files, Unicode names and modification times.</p></div>
+        <div class="card"><h3>Never half a file</h3><p>Every file is checked with BLAKE3 before it appears. Unfinished data stays hidden.</p></div>
+        <div class="card"><h3>Survives Wi-Fi drops</h3><p>Reconnects automatically and continues from the last verified byte. Pause, cancel, or retry only what failed.</p></div>
+        <div class="card"><h3>Text &amp; links too</h3><p>Send a link or note to the other device and copy it with one click.</p></div>
+        <div class="card"><h3>Fast</h3><p>The engine moves 1.5–2 GB/s in tests, so your Wi-Fi is the only limit. <a href="https://github.com/mdimamhosen/DropBridge/blob/main/docs/BENCHMARKS.md">See measurements</a>.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="security" class="alt">
+    <div class="wrap">
+      <h2>Private by design</h2>
+      <p class="lead">Your files go from one device to the other. Nowhere else.</p>
+      <div class="grid">
+        <div class="card"><h3>End-to-end encrypted</h3><p>Every connection uses TLS 1.3 with a unique key per device, stored in your OS keychain.</p></div>
+        <div class="card"><h3>No middleman</h3><p>Matching codes or a QR scan prove you're talking to the right device, not someone on the same network.</p></div>
+        <div class="card"><h3>You decide</h3><p>Nothing is saved without your approval. Block or forget devices any time.</p></div>
+        <div class="card"><h3>No tracking</h3><p>No accounts, no servers, no analytics. Read the <a href="https://github.com/mdimamhosen/DropBridge/blob/main/docs/THREAT_MODEL.md">threat model</a>.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="download">
+    <div class="wrap">
+      <h2>Download</h2>
+      <p class="lead" id="ver">Latest release from GitHub. Check files against <code>SHA256SUMS.txt</code>.</p>
+      <div class="grid" id="dl">
+        <div class="card dl" data-os="android"><span class="os">Android</span><span class="req">Android 10 or newer</span><div class="files" data-match="\.apk$"></div></div>
+        <div class="card dl" data-os="mac"><span class="os">macOS</span><span class="req">macOS 11+ · Apple Silicon or Intel. First launch: right-click → Open.</span><div class="files" data-match="\.dmg$"></div></div>
+        <div class="card dl" data-os="windows"><span class="os">Windows</span><span class="req">Windows 10 / 11</span><div class="files" data-match="(\.msi|-setup\.exe)$"></div></div>
+        <div class="card dl" data-os="linux"><span class="os">Linux</span><span class="req">Ubuntu 22.04+ and similar</span><div class="files" data-match="(\.AppImage|\.deb)$"></div></div>
+      </div>
+      <p class="small">Command-line version and checksums: <a href="https://github.com/mdimamhosen/DropBridge/releases/latest">all release files</a>. iPhone app: planned.</p>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <h2>Honest about speed</h2>
+      <p class="lead">Measured, not promised.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Test</th><th>Result</th><th>Where measured</th></tr></thead>
+          <tbody>
+            <tr><td>1 GB file</td><td>1.8 GB/s</td><td>Engine on one Mac (loopback, full encryption)</td></tr>
+            <tr><td>10 GB file</td><td>1.5 GB/s, 43 MB memory</td><td>Engine on one Mac (loopback)</td></tr>
+            <tr><td>1,000 small files</td><td>0.15–0.3 s</td><td>Engine on one Mac (loopback)</td></tr>
+            <tr><td>Phone ⇄ Mac over Wi-Fi</td><td>Coming soon</td><td>Needs real-device runs; we'll publish them, AirDrop comparison included</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">Over Wi-Fi, speed depends on your router and distance: a phone → router → computer path crosses the air twice. 5 GHz / Wi-Fi 6 and a wired computer help most.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Questions</h2>
+      <details><summary>My devices don't see each other</summary><p>Make sure both are on the same Wi-Fi (guest networks often block this) and DropBridge is open on both. On a Mac allow "Local Network" access. You can always pair with the QR code under <b>Pair a device</b>.</p></details>
+      <details><summary>Does it work without Wi-Fi?</summary><p>Turn on your phone's hotspot and join it from your computer. No internet is needed either way.</p></details>
+      <details><summary>Is it really free?</summary><p>Yes. Open source under Apache-2.0, no ads, no account.</p></details>
+      <details><summary>Why does macOS / Windows warn me on first launch?</summary><p>Early builds aren't code-signed yet. Right-click → Open on macOS, or "More info → Run anyway" on Windows. Compare the file with SHA256SUMS.txt if you want to be sure.</p></details>
+      <details><summary>How can I help?</summary><p>Report bugs, test on your devices, or contribute code. See the <a href="https://github.com/mdimamhosen/DropBridge/blob/main/CONTRIBUTING.md">contributing guide</a>.</p></details>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>DropBridge · Apache-2.0</span>
+    <span><a href="https://github.com/mdimamhosen/DropBridge">GitHub</a> · <a href="https://github.com/mdimamhosen/DropBridge/issues">Report a problem</a></span>
+  </div>
+</footer>
+
+<script>
+  // Fill download buttons from the latest GitHub release; fall back to the releases page.
+  const REL = "https://github.com/mdimamhosen/DropBridge/releases/latest";
+  const ua = navigator.userAgent;
+  const mine = /Android/i.test(ua) ? "android" : /Mac/i.test(ua) ? "mac" : /Win/i.test(ua) ? "windows" : /Linux/i.test(ua) ? "linux" : "";
+  const label = (n) => n.endsWith(".apk") ? "Download APK" : n.endsWith(".msi") ? "Installer (.msi)" : n.endsWith(".exe") ? "Setup (.exe)"
+    : n.endsWith(".deb") ? ".deb" : n.endsWith(".AppImage") ? "AppImage" : /aarch64|arm64/.test(n) ? "Apple Silicon" : /x64|x86_64/.test(n) ? "Intel" : n;
+  function fill(assets) {
+    document.querySelectorAll(".dl").forEach((card) => {
+      if (card.dataset.os === mine) card.classList.add("mine");
+      const box = card.querySelector(".files");
+      box.textContent = "";
+      const re = new RegExp(box.dataset.match);
+      const hits = assets.filter((a) => re.test(a.name));
+      (hits.length ? hits : [{ name: "Release page", browser_download_url: REL }]).forEach((a, i) => {
+        const el = document.createElement("a");
+        el.className = "btn" + (i === 0 ? " primary" : "");
+        el.href = a.browser_download_url;
+        el.textContent = hits.length ? label(a.name) : "Get it on GitHub";
+        box.appendChild(el);
+      });
+    });
+  }
+  fill([]);
+  fetch("https://api.github.com/repos/mdimamhosen/DropBridge/releases/latest")
+    .then((r) => (r.ok ? r.json() : Promise.reject()))
+    .then((rel) => {
+      fill(rel.assets || []);
+      document.getElementById("ver").textContent = `Version ${rel.tag_name}. Check files against SHA256SUMS.txt.`;
+    })
+    .catch(() => {});
+</script>
+</body>
+</html>
