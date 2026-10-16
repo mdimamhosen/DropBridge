@@ -32,8 +32,9 @@ is written before this check.
 **Connection lost mid-transfer** — DropBridge reconnects by itself for 2 minutes and continues from the last
 verified byte. After that, press **Retry**: only missing files are sent.
 
-**macOS: "DropBridge can't be opened because Apple cannot check it"** — right-click the app → Open → Open
-(once). Or `xattr -dr com.apple.quarantine /Applications/DropBridge.app`.
+**macOS: "Apple could not verify DropBridge"** — click Done, then System Settings → Privacy & Security →
+**Open Anyway** (macOS 14 and older: right-click the app → Open). Or in Terminal:
+`xattr -dr com.apple.quarantine /Applications/DropBridge.app`. Needed once, because builds aren't notarised yet.
 
 **macOS asks for Keychain access after an update** — click *Always Allow*. Unsigned builds change signature
 on every release; signed releases don't ask.

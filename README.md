@@ -1,129 +1,204 @@
 <p align="center"><img src="assets/icon.png" width="96" alt="" /></p>
 <h1 align="center">DropBridge</h1>
-<p align="center">AirDrop-style file sharing between Android, macOS, Windows and Linux.<br/>
-Direct, encrypted, no account, no cloud.</p>
-<p align="center"><a href="https://github.com/mdimamhosen/DropBridge/releases/latest"><b>Download</b></a> · <a href="https://mdimamhosen.me/DropBridge/">Website</a> · <a href="docs/ARCHITECTURE.md">How it works</a></p>
+<p align="center"><b>AirDrop for Android and every computer.</b><br/>
+Send files, folders, photos, videos and text between Android, macOS, Windows and Linux.<br/>
+Direct over your Wi-Fi · end-to-end encrypted · no account · no cloud.</p>
+
+<p align="center">
+  <a href="https://mdimamhosen.me/DropBridge/"><b>Website</b></a> ·
+  <a href="https://github.com/mdimamhosen/DropBridge/releases/latest"><b>Download</b></a> ·
+  <a href="#install">Install</a> ·
+  <a href="#how-to-use">How to use</a> ·
+  <a href="docs/BENCHMARKS.md">Benchmarks</a> ·
+  <a href="CONTRIBUTING.md">Contribute</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/mdimamhosen/DropBridge/actions/workflows/ci.yml"><img src="https://github.com/mdimamhosen/DropBridge/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/mdimamhosen/DropBridge/releases/latest"><img src="https://img.shields.io/github/v/release/mdimamhosen/DropBridge" alt="Latest release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License" /></a>
+</p>
 
 ---
 
-## What it does
-Open DropBridge on two devices on the same Wi-Fi. They find each other. Pick files, a folder, photos or
-some text, tap the other device, accept on the other side. Done.
+## Download
 
-- **Files, folders, photos, videos, text and links**, any size (tested to 10 GB+), folder structure and timestamps kept.
-- **Direct and private**: device-to-device over your local network. Nothing is uploaded anywhere. Works without internet.
-- **Encrypted** with TLS 1.3; devices verify each other with a matching 6-digit code or a QR scan.
-- **Verified**: every file is checked with BLAKE3 before it appears. Corrupted or partial files never show up as finished.
-- **Resumes** after Wi-Fi drops, app restarts or reboots, from the last verified byte. Pause, cancel, retry only failed files.
-- **Fast**: the engine moves 1.5–2 GB/s on loopback, so your Wi-Fi is the limit ([benchmarks](docs/BENCHMARKS.md)).
-
-## Supported systems
-| Platform | Minimum | Install |
+| Platform | Download | Requirements |
 |---|---|---|
-| Android | 10 | `DropBridge-<version>.apk` |
-| macOS | 11 Big Sur (Apple Silicon & Intel) | `.dmg` |
-| Windows | 10 / 11 | `.msi` or `-setup.exe` |
-| Linux | Ubuntu 22.04+ or similar (WebKitGTK 4.1) | `.AppImage` or `.deb` |
-| Command line | macOS / Linux / Windows | `dropbridge-<target>` binaries |
+| **Android** | [DropBridge-Android.apk](https://github.com/mdimamhosen/DropBridge/releases/latest/download/DropBridge-Android.apk) | Android 10+ |
+| **macOS** (M1–M5) | [DropBridge-macOS-AppleSilicon.dmg](https://github.com/mdimamhosen/DropBridge/releases/latest/download/DropBridge-macOS-AppleSilicon.dmg) | macOS 11+ |
+| **macOS** (Intel) | [DropBridge-macOS-Intel.dmg](https://github.com/mdimamhosen/DropBridge/releases/latest/download/DropBridge-macOS-Intel.dmg) | macOS 11+ |
+| **Windows** | [Installer (.msi)](https://github.com/mdimamhosen/DropBridge/releases/latest/download/DropBridge-Windows-x64.msi) · [Setup (.exe)](https://github.com/mdimamhosen/DropBridge/releases/latest/download/DropBridge-Windows-x64-setup.exe) | Windows 10 / 11 |
+| **Linux** | [.deb](https://github.com/mdimamhosen/DropBridge/releases/latest/download/DropBridge-Linux-amd64.deb) · [AppImage](https://github.com/mdimamhosen/DropBridge/releases/latest/download/DropBridge-Linux-x86_64.AppImage) | Ubuntu 22.04+ or similar |
+| **Command line** | [all builds](https://github.com/mdimamhosen/DropBridge/releases/latest) | macOS · Linux · Windows |
 
-iPhone/iPad: planned (needs its own app; the core is ready for it).
+Every file is listed with its SHA-256 in `SHA256SUMS.txt` on the [release page](https://github.com/mdimamhosen/DropBridge/releases/latest).
 
 ## Install
-Download from the [latest release](https://github.com/mdimamhosen/DropBridge/releases/latest) and check the
-file against `SHA256SUMS.txt`.
 
-- **Android**: open the APK, allow "Install unknown apps" for your browser/file manager once.
-- **macOS**: open the `.dmg`, drag DropBridge to Applications. First launch: right-click → **Open** → **Open**
-  (builds aren't notarised yet). Allow **Local Network** access when asked.
-- **Windows**: run the installer; if SmartScreen appears choose *More info → Run anyway*. Allow on **Private** networks.
-- **Linux**: `chmod +x DropBridge_*.AppImage && ./DropBridge_*.AppImage`, or `sudo apt install ./dropbridge_*.deb`.
+<details open>
+<summary><b>Android</b></summary>
+
+1. Download the APK on your phone and open it.
+2. If asked, allow your browser or file manager to **install unknown apps** (one time), then tap **Install**.
+3. Open DropBridge, tap **Continue** and allow notifications.
+</details>
+
+<details open>
+<summary><b>macOS</b></summary>
+
+1. Download the `.dmg` for your Mac (Apple menu → About This Mac: "Apple M…" = Apple Silicon, "Intel" = Intel), open it and drag **DropBridge** into **Applications**.
+2. Open DropBridge. macOS says it can't verify the developer — click **Done**.
+3. Go to **System Settings → Privacy & Security**, scroll down, click **Open Anyway** next to DropBridge and confirm.
+   On macOS 14 or older: right-click the app → **Open** → **Open**.
+4. Allow **Local Network** access when asked, so it can find your phone.
+
+Or do steps 2–3 in Terminal:
+```bash
+xattr -dr com.apple.quarantine /Applications/DropBridge.app
+```
+This one-time step is needed because builds aren't notarised by Apple yet.
+</details>
+
+<details open>
+<summary><b>Windows</b></summary>
+
+1. Run the `.msi` (or `-setup.exe`).
+2. If SmartScreen appears: **More info → Run anyway** (the installer isn't code-signed yet).
+3. Open DropBridge and click **Allow** when Windows Firewall asks, with **Private networks** ticked.
+</details>
+
+<details open>
+<summary><b>Linux</b></summary>
+
+```bash
+# Ubuntu / Debian
+sudo apt install ./DropBridge-Linux-amd64.deb
+
+# Any distribution
+chmod +x DropBridge-Linux-x86_64.AppImage && ./DropBridge-Linux-x86_64.AppImage
+```
+If you use a firewall (e.g. `ufw`), allow DropBridge on your local network.
+</details>
+
+<details>
+<summary><b>Command line</b> (any OS, also good for servers)</summary>
+
+```bash
+# macOS / Linux: download the binary for your system from the release page, then
+chmod +x dropbridge-* && sudo mv dropbridge-* /usr/local/bin/dropbridge
+dropbridge receive                                  # wait for files, prints a pairing code
+dropbridge send "MacBook Air" photo.jpg Videos/     # by device name
+dropbridge send 192.168.1.20:52345 notes.pdf --text "here you go"
+dropbridge peers                                    # list nearby devices
+```
+</details>
 
 ## How to use
-1. Open DropBridge on both devices (same Wi-Fi, or join the phone's hotspot).
-2. **Send**: drop files on a device (desktop), or choose *Files / Photos / Folder / Text* and tap a device (Android).
-   From any Android app: **Share → DropBridge**.
-3. **Receive**: a request appears with a 6-digit code. If the device is new, check the sender shows the same code,
-   then **Accept** (or **Accept & trust** to skip the code next time).
 
-Device not showing? Computer: **Pair a device** shows a QR code. Phone: **Scan QR**. Or use
-*Connect by address* with the IP:port and code shown. More in [Troubleshooting](docs/TROUBLESHOOTING.md).
+1. **Open DropBridge on both devices.** They must be on the same Wi-Fi — or connect the computer to your phone's hotspot. Devices appear automatically in about a second.
+2. **Send.**
+   - *Computer:* drag files or folders onto a device (sends right away), or drop them in the window and then click a device. **Send text** sends a link or note.
+   - *Android:* tap **Files**, **Photos & videos**, **Folder** or **Text**, then tap a device. From any app: **Share → DropBridge**.
+3. **Accept on the other device.** A new device shows a 6-digit code on both screens — check they match, then **Accept** (or **Accept & trust** to skip the check next time).
 
-## Permissions, and why
-| Permission | Platform | Why |
+Device not showing up? On the computer click **Pair a device** to show a QR code, then tap **Scan QR** on the phone. Or use **Connect manually / Connect by address** with the address and code shown. See [Troubleshooting](docs/TROUBLESHOOTING.md).
+
+Received files go to your **Downloads** folder (desktop, changeable in Settings) or **Download/DropBridge** (Android).
+
+## Features
+
+- **Any size**: streams files instead of loading them into memory (a 10 GB file used a flat ~43 MB).
+- **Folders kept intact**: structure, empty folders, hidden files, Unicode names and timestamps.
+- **Every file verified** with BLAKE3 before it appears; partial data stays hidden.
+- **Resumes** after Wi-Fi drops, app restarts or reboots, from the last verified byte. **Retry** sends only what failed.
+- **Pause, resume, cancel** from either side; keep-both / replace / skip for duplicates; transfer history.
+- **Text and links** with one-click copy.
+- **Native feel**: Android share sheet and photo picker; desktop drag-and-drop, menu bar/tray, notifications, dark mode, keyboard and screen-reader support.
+
+## Security and privacy
+
+- Every connection uses **TLS 1.3**, with a unique key per device stored in the OS keychain (Keychain, Credential Manager, Secret Service, Android Keystore).
+- **No man-in-the-middle**: both screens show a 6-digit code derived from the encrypted session; QR pairing pins the device identity.
+- **Nothing without your approval**: unknown devices always ask; block or forget devices any time.
+- Path-traversal and malicious-filename protection, free-space checks, and replay protection.
+- **No accounts, no servers, no analytics.** Details: [Threat model](docs/THREAT_MODEL.md).
+
+## Performance
+
+Same Mac, each tool sending between two processes (this measures each tool's own overhead, with the radio taken out):
+
+| Tool | 1 GB file | 1,000 small files |
 |---|---|---|
-| Local Network | macOS, iOS | find devices and connect to them on your Wi-Fi |
-| Firewall (incoming) | macOS, Windows | let the other device connect to receive files |
+| **DropBridge** | **0.55 s** | **0.14 s** |
+| HTTPS (`openssl` + `curl`) | 2.29 s | 1.28 s |
+| croc 11.5.4 | 7.38 s | 11.59 s |
+| Disk copy (`cp`, the ceiling) | 0.19 s | 0.17 s |
+
+Over Wi-Fi your network sets the speed. Phone ⇄ computer comparisons against AirDrop, Quick Share and LocalSend need real devices — **[submit your results](https://github.com/mdimamhosen/DropBridge/issues/new?template=benchmark.yml)**. Method and all numbers: [docs/BENCHMARKS.md](docs/BENCHMARKS.md). Reproduce with `scripts/compare.sh`.
+
+## Permissions
+
+| Permission | Where | Why |
+|---|---|---|
+| Local Network | macOS | find and connect to your devices on Wi-Fi |
+| Firewall (incoming) | macOS, Windows | let the other device connect to send you files |
 | Notifications | Android 13+, desktop | incoming requests and progress |
-| Camera | Android, only on *Scan QR* | read the pairing QR code |
-| Multicast, Wi-Fi state | Android (no prompt) | device discovery |
+| Camera | Android, only for **Scan QR** | read the pairing QR code |
 | Foreground service | Android (no prompt) | keep a transfer going with the screen off |
-| Battery optimisation exemption | Android (optional) | some phones stop background transfers otherwise |
+| Battery optimisation exemption | Android (optional) | some phones pause background transfers otherwise |
 
-DropBridge collects no analytics, has no servers, and never reads anything except the files you choose.
+## Known limitations
 
-## Architecture in one paragraph
-A Rust core (`core/`) does discovery (mDNS), mutual TLS 1.3 with per-device keys, the transfer protocol,
-BLAKE3 verification, resume and all path-safety checks. The desktop app is Tauri 2 (one codebase for macOS,
-Windows, Linux) calling the core directly; the Android app is Kotlin/Jetpack Compose calling it through
-UniFFI. See [Architecture](docs/ARCHITECTURE.md), [Protocol](docs/PROTOCOL.md), [Threat model](docs/THREAT_MODEL.md).
+- macOS and Windows builds aren't notarised / code-signed yet, hence the one-time step during install.
+- Android receives while the app is open or a transfer is running (Android limits background listeners).
+- macOS has no Wi-Fi Direct and AirDrop's radio is private to Apple, so without a shared network use the phone's hotspot.
+- No iPhone app yet; no internet relay (local transfers only, by design).
+
+## How it works
+
+A Rust core (`core/`) handles discovery (mDNS), mutual TLS 1.3, the transfer protocol, BLAKE3 verification, resume and path safety. The desktop app is Tauri 2 (one codebase for macOS, Windows, Linux); the Android app is Kotlin + Jetpack Compose using the same core through UniFFI.
+More: [Architecture](docs/ARCHITECTURE.md) · [Protocol](docs/PROTOCOL.md) · [Threat model](docs/THREAT_MODEL.md).
+
+```
+core/      Rust engine: protocol, TLS, transfers, resume, discovery
+cli/       dropbridge command line (send / receive / peers / bench)
+desktop/   Tauri app for macOS, Windows, Linux
+android/   Android app (Kotlin, Compose)
+ffi/       UniFFI bindings used by Android
+site/      website
+docs/      architecture, protocol, threat model, benchmarks, troubleshooting
+```
 
 ## Build from source
+
 **Prerequisites**
-- Rust 1.80+ (`curl https://sh.rustup.rs -sSf | sh`)
-- Desktop: `cargo install tauri-cli --locked` (v2). macOS: Xcode command-line tools. Linux:
-  `sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config build-essential`.
-  Windows: MSVC build tools + WebView2 (preinstalled on Windows 11).
+- Rust (stable): `curl https://sh.rustup.rs -sSf | sh`
+- Desktop: `cargo install tauri-cli --version 2.12.3 --locked`
+  - macOS: Xcode command-line tools
+  - Linux: `sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config build-essential`
+  - Windows: MSVC build tools + WebView2 (built into Windows 11)
 - Android: JDK 17, Android SDK (platform 35) + NDK 27, `cargo install cargo-ndk --locked`,
-  `rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`, `ANDROID_HOME` set.
+  `rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`, and `ANDROID_HOME` set.
 
 **Commands**
 ```bash
 git clone https://github.com/mdimamhosen/DropBridge && cd DropBridge
-cargo test --workspace                         # tests (unit + end-to-end over TLS)
-cargo run -p dropbridge-cli -- receive         # CLI receiver
-cargo run -p dropbridge-cli -- send <host:port|name|dropbridge://...> FILES... [--text "hi"]
-cd desktop/src-tauri && cargo tauri dev        # desktop app (dev)
-cd desktop/src-tauri && cargo tauri build      # desktop installers → target/release/bundle/
-scripts/build-android.sh                       # Android debug APK
-scripts/build-android.sh release               # Android release APK
+cargo test --workspace                      # unit + end-to-end tests over real TLS
+cargo run -p dropbridge-cli -- receive      # CLI receiver
+cd desktop/src-tauri && cargo tauri dev     # desktop app with live reload
+cd desktop/src-tauri && cargo tauri build   # installers → target/release/bundle/
+scripts/build-android.sh                    # Android debug APK
+cargo run --release -p dropbridge-cli -- bench   # benchmark (add --full for 10 GB)
 ```
 
-## Benchmarks
-```bash
-cargo run --release -p dropbridge-cli -- bench          # loopback: 100 MB, 1 GB, 1,000 files
-cargo run --release -p dropbridge-cli -- bench --full   # + 10 GB
-dropbridge receive --yes   # on device B (trusted test setup only)
-dropbridge bench --to <B's ip:port>                     # real network
-```
-Results and method: [docs/BENCHMARKS.md](docs/BENCHMARKS.md). We only publish measured numbers.
-
-## Release builds and signing
-Pushing a tag `v*` runs `.github/workflows/release.yml`, which builds every installer, the APK and CLI binaries,
-and publishes a GitHub Release with `SHA256SUMS.txt`.
-
-- **Android**: create a keystore once
-  `keytool -genkeypair -v -keystore dropbridge.jks -alias dropbridge -keyalg RSA -keysize 4096 -validity 10000`,
-  then add repo secrets `ANDROID_KEYSTORE_BASE64` (`base64 -i dropbridge.jks`), `ANDROID_KEYSTORE_PASSWORD`,
-  `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. Without them the APK is signed with a throwaway debug key
-  (installable, but future signed versions won't update over it). Keep the keystore safe: losing it means
-  users must reinstall.
-- **macOS** (optional, Apple Developer Program): secrets `APPLE_CERTIFICATE` (base64 .p12),
-  `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (app-specific),
-  `APPLE_TEAM_ID`, and pass them as `env:` on the *Build* step of `release.yml` (marked there). Tauri then
-  signs and notarises automatically.
-- **Windows** (optional): an Authenticode certificate; see Tauri's
-  [Windows signing guide](https://v2.tauri.app/distribute/sign/windows/).
-
-## Known limitations
-- Real-Wi-Fi speed numbers versus AirDrop are not measured yet; no speed claims until they are.
-- Android only receives while the app is open or a transfer is running (Android limits background listeners).
-- macOS has no Wi-Fi Direct and AWDL (AirDrop's radio) is private to Apple, so without a shared network use the phone's hotspot.
-- Desktop builds aren't code-signed yet (one-time Gatekeeper/SmartScreen step; macOS may ask for Keychain access after updates).
-- Android 11+ can't see files other apps put in `Download/DropBridge`, so a name clash with such a file fails that one file ("Can't save file"); retry with "Keep both" after renaming.
-- No iOS app, no internet relay (by design for v1).
+**Releases**: pushing a tag `v*` builds every installer, the APK and CLI binaries in GitHub Actions and publishes them with `SHA256SUMS.txt`. Android signing uses the repo secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. For notarised macOS builds, add `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` as `env:` on the *Build* step of `release.yml`.
 
 ## Contributing
-See [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports with OS versions and steps are very welcome.
+
+Bug reports, device test results and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+Found a security issue? Please report it privately (details in CONTRIBUTING.md).
 
 ## License
-[Apache-2.0](LICENSE)
+
+[Apache-2.0](LICENSE) © Md Imam Hosen

@@ -220,6 +220,16 @@ h2 { font-size: clamp(30px, 4.6vw, 46px); margin: 8px 0 12px; letter-spacing: -.
 .cli { margin-top: 22px; background: #0b0f17; color: #d6e2ff; border-radius: 16px; padding: 18px 20px; font: 14px/1.7 ui-monospace, Menlo, monospace; overflow-x: auto; }
 .cli .c { color: #6b7a99; }
 
+[hidden] { display: none !important; }
+/* install */
+.install { margin-top: 26px; background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 24px; }
+.install h3 { margin: 0 0 14px; font-size: 20px; }
+.install .tabs { margin-bottom: 10px; flex-wrap: wrap; }
+.install ol { margin: 0; padding-left: 22px; display: grid; gap: 10px; }
+.install li { padding-left: 4px; }
+.install code, .tip code { background: var(--bg2); padding: 2px 7px; border-radius: 6px; font-size: 14px; word-break: break-all; }
+.tip { color: var(--muted); font-size: 14.5px; margin: 14px 0 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
 /* faq */
 .faq { max-width: 780px; margin: 0 auto; }
 details { background: var(--card); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 10px; overflow: hidden; }
@@ -410,10 +420,44 @@ footer a:hover { color: var(--text); }
     <div class="wrap">
       <div class="center reveal"><div class="kicker">Download</div><h2>Free. On every device you own.</h2><p class="sub" id="ver">Latest release from GitHub. Check files against SHA256SUMS.txt.</p></div>
       <div class="dls">
-        <div class="dl reveal" data-os="android"><div class="os">🤖</div><h3>Android</h3><span class="req">Android 10 or newer. Allow “install unknown apps” once.</span><div class="files" data-match="\.apk$"></div></div>
-        <div class="dl reveal" style="--d:.06s" data-os="mac"><div class="os">💻</div><h3>macOS</h3><span class="req">macOS 11+. First launch: right-click → Open.</span><div class="files" data-match="\.dmg$"></div></div>
-        <div class="dl reveal" style="--d:.12s" data-os="windows"><div class="os">🖥️</div><h3>Windows</h3><span class="req">Windows 10 / 11. SmartScreen: More info → Run anyway.</span><div class="files" data-match="(\.msi|-setup\.exe)$"></div></div>
-        <div class="dl reveal" style="--d:.18s" data-os="linux"><div class="os">🐧</div><h3>Linux</h3><span class="req">Ubuntu 22.04+ and similar.</span><div class="files" data-match="(\.AppImage|\.deb)$"></div></div>
+        <div class="dl reveal" data-os="android"><div class="os">🤖</div><h3>Android</h3><span class="req">Android 10 or newer. Allow “install unknown apps” once.</span><div class="files"><a class="btn sm primary" href="https://github.com/mdimamhosen/DropBridge/releases/latest/download/DropBridge-Android.apk">Download APK</a></div></div>
+        <div class="dl reveal" style="--d:.06s" data-os="mac"><div class="os">💻</div><h3>macOS</h3><span class="req">macOS 11+, Apple Silicon or Intel. One extra click on first launch (see below).</span><div class="files"><a class="btn sm primary" href="https://github.com/mdimamhosen/DropBridge/releases/latest/download/DropBridge-macOS-AppleSilicon.dmg">Apple Silicon</a><a class="btn sm" href="https://github.com/mdimamhosen/DropBridge/releases/latest/download/DropBridge-macOS-Intel.dmg">Intel</a></div></div>
+        <div class="dl reveal" style="--d:.12s" data-os="windows"><div class="os">🖥️</div><h3>Windows</h3><span class="req">Windows 10 / 11. Installer or one-click setup.</span><div class="files"><a class="btn sm primary" href="https://github.com/mdimamhosen/DropBridge/releases/latest/download/DropBridge-Windows-x64.msi">Installer (.msi)</a><a class="btn sm" href="https://github.com/mdimamhosen/DropBridge/releases/latest/download/DropBridge-Windows-x64-setup.exe">Setup .exe</a></div></div>
+        <div class="dl reveal" style="--d:.18s" data-os="linux"><div class="os">🐧</div><h3>Linux</h3><span class="req">Ubuntu 22.04+ and similar.</span><div class="files"><a class="btn sm primary" href="https://github.com/mdimamhosen/DropBridge/releases/latest/download/DropBridge-Linux-amd64.deb">.deb</a><a class="btn sm" href="https://github.com/mdimamhosen/DropBridge/releases/latest/download/DropBridge-Linux-x86_64.AppImage">AppImage</a></div></div>
+      </div>
+      <div class="install reveal" id="install">
+        <h3>Install in under a minute</h3>
+        <div class="tabs" role="tablist" aria-label="Install steps">
+          <button role="tab" data-os="android" aria-selected="false">Android</button>
+          <button role="tab" data-os="mac" aria-selected="true">macOS</button>
+          <button role="tab" data-os="windows" aria-selected="false">Windows</button>
+          <button role="tab" data-os="linux" aria-selected="false">Linux</button>
+        </div>
+        <ol data-os="android" hidden>
+          <li>Tap <b>Download APK</b> above on your phone and open the file when it finishes.</li>
+          <li>If asked, allow your browser to <b>install unknown apps</b> (one time), then tap <b>Install</b>.</li>
+          <li>Open DropBridge, tap <b>Continue</b>, allow notifications. Done.</li>
+        </ol>
+        <ol data-os="mac">
+          <li>Download the <b>.dmg</b> (Apple Silicon for M1–M5 Macs, Intel for older), open it and drag <b>DropBridge</b> into <b>Applications</b>.</li>
+          <li>Open DropBridge from Applications. macOS says it can't verify the developer — click <b>Done</b>.</li>
+          <li>Open <b>System Settings → Privacy &amp; Security</b>, scroll down and click <b>Open Anyway</b> next to DropBridge, then confirm. (macOS 14 and older: right-click the app → <b>Open</b>.)</li>
+          <li>Allow <b>Local Network</b> access when asked so it can find your phone.</li>
+        </ol>
+        <p class="tip" data-os="mac">Prefer Terminal? This does steps 2–3 in one go:
+          <code id="mac-cmd">xattr -dr com.apple.quarantine /Applications/DropBridge.app</code>
+          <button class="btn sm" id="copy-cmd" type="button">Copy</button></p>
+        <ol data-os="windows" hidden>
+          <li>Download the <b>.msi</b> (or <b>Setup .exe</b>) and run it.</li>
+          <li>If SmartScreen appears, click <b>More info → Run anyway</b> (the app isn't code-signed yet).</li>
+          <li>Open DropBridge and click <b>Allow</b> when Windows Firewall asks, with <b>Private networks</b> ticked.</li>
+        </ol>
+        <ol data-os="linux" hidden>
+          <li><b>Ubuntu/Debian:</b> download the <b>.deb</b> and run <code>sudo apt install ./DropBridge_*.deb</code>.</li>
+          <li><b>Any distro:</b> download the <b>AppImage</b>, then <code>chmod +x DropBridge_*.AppImage &amp;&amp; ./DropBridge_*.AppImage</code>.</li>
+          <li>If you use a firewall (ufw), allow DropBridge on your local network.</li>
+        </ol>
+        <p class="tip">Every file is listed with its SHA-256 in <a href="https://github.com/mdimamhosen/DropBridge/releases/latest">SHA256SUMS.txt</a>. Stuck? <a href="https://github.com/mdimamhosen/DropBridge/blob/main/docs/TROUBLESHOOTING.md">Troubleshooting</a>.</p>
       </div>
       <div class="cli reveal"><span class="c"># Prefer the terminal? Same engine, scriptable.</span><br />dropbridge receive<br />dropbridge send "MacBook Air" ~/Movies/trip.mov --text "here you go"</div>
     </div>
@@ -425,7 +469,7 @@ footer a:hover { color: var(--text); }
       <details class="reveal"><summary>My devices don't see each other</summary><p>Make sure both are on the same Wi-Fi (guest networks often block this) and DropBridge is open on both. On a Mac allow “Local Network” access. You can always pair with the QR code under “Pair a device”.</p></details>
       <details class="reveal"><summary>Does it need internet?</summary><p>No. Devices talk directly. No Wi-Fi router? Turn on your phone's hotspot and join it from the computer.</p></details>
       <details class="reveal"><summary>Is it faster than AirDrop?</summary><p>We don't claim that yet. The engine adds little over a plain disk copy, so your Wi-Fi decides the speed. Real-device comparisons are being collected — you can submit yours.</p></details>
-      <details class="reveal"><summary>Why does macOS / Windows warn on first launch?</summary><p>Early builds aren't code-signed yet. Right-click → Open on macOS, or More info → Run anyway on Windows. Compare the file with SHA256SUMS.txt if you want to be sure.</p></details>
+      <details class="reveal"><summary>Why does macOS / Windows warn on first launch?</summary><p>Builds aren't notarised by Apple or code-signed for Windows yet (that needs paid certificates). On macOS click Open Anyway in System Settings → Privacy &amp; Security once; on Windows choose More info → Run anyway. Steps are in the Install section above. Compare the file with SHA256SUMS.txt if you want to be sure.</p></details>
       <details class="reveal"><summary>Is it really free?</summary><p>Yes. Open source under Apache-2.0. No ads, no account, no tracking.</p></details>
     </div>
   </section>
@@ -534,40 +578,36 @@ function drawChart() {
   ch.innerHTML = rows.map(([n, s, v, cls]) => `<div class="row ${cls || ""}"><div class="nm">${n}<small>${s}</small></div><div class="track2"><div class="fill" data-w="${Math.max(1.5, (v / max) * 100)}"></div></div><div class="val">${v.toFixed(2)}s</div></div>`).join("");
   requestAnimationFrame(() => requestAnimationFrame(() => ch.querySelectorAll(".fill").forEach((f) => (f.style.width = f.dataset.w + "%"))));
 }
-document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
-  document.querySelectorAll(".tabs button").forEach((x) => x.setAttribute("aria-selected", x === b));
+document.querySelectorAll("#speed .tabs button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll("#speed .tabs button").forEach((x) => x.setAttribute("aria-selected", x === b));
   set = b.dataset.set; drawChart();
 }));
+
+// install steps: one tab per OS, opens on the visitor's OS
+function showOS(os) {
+  document.querySelectorAll("#install .tabs button").forEach((b) => b.setAttribute("aria-selected", b.dataset.os === os));
+  document.querySelectorAll("#install [data-os]:not(button)").forEach((el) => (el.hidden = el.dataset.os !== os));
+}
+document.querySelectorAll("#install .tabs button").forEach((b) => b.addEventListener("click", () => showOS(b.dataset.os)));
+document.getElementById("copy-cmd").addEventListener("click", (e) => {
+  navigator.clipboard?.writeText(document.getElementById("mac-cmd").textContent).then(() => (e.target.textContent = "Copied ✓"));
+});
 
 // downloads from the latest GitHub release
 const REL = "https://github.com/mdimamhosen/DropBridge/releases/latest";
 const ua = navigator.userAgent;
 const mine = /Android/i.test(ua) ? "android" : /iPhone|iPad/i.test(ua) ? "" : /Mac/i.test(ua) ? "mac" : /Win/i.test(ua) ? "windows" : /Linux/i.test(ua) ? "linux" : "";
-const label = (n) => n.endsWith(".apk") ? "Download APK" : n.endsWith(".msi") ? ".msi installer" : n.endsWith(".exe") ? "Setup .exe" : n.endsWith(".deb") ? ".deb" : n.endsWith(".AppImage") ? "AppImage" : /aarch64|arm64/.test(n) ? "Apple Silicon" : /x64|x86_64/.test(n) ? "Intel" : n;
-function fill(assets) {
-  document.querySelectorAll(".dl").forEach((card) => {
-    card.classList.toggle("mine", card.dataset.os === mine);
-    const box = card.querySelector(".files"), re = new RegExp(box.dataset.match);
-    const hits = assets.filter((a) => re.test(a.name));
-    box.textContent = "";
-    (hits.length ? hits : [{ name: "", browser_download_url: REL }]).forEach((a, i) => {
-      const el = document.createElement("a");
-      el.className = "btn sm" + (i === 0 ? " primary" : ""); el.href = a.browser_download_url;
-      el.textContent = a.name ? label(a.name) : "Get it on GitHub";
-      box.appendChild(el);
-    });
-  });
-  if (mine) {
-    const card = document.querySelector(`.dl[data-os="${mine}"] .files a`);
-    const h = document.getElementById("hero-dl");
-    if (card && assets.length) { h.href = card.href; h.textContent = `Download for ${{ android: "Android", mac: "macOS", windows: "Windows", linux: "Linux" }[mine]}`; }
-  }
+document.querySelectorAll(".dl").forEach((card) => card.classList.toggle("mine", card.dataset.os === mine));
+if (mine) {
+  const first = document.querySelector(`.dl[data-os="${mine}"] .files a`), h = document.getElementById("hero-dl");
+  h.href = first.href;
+  h.textContent = `Download for ${{ android: "Android", mac: "macOS", windows: "Windows", linux: "Linux" }[mine]}`;
 }
-fill([]);
+showOS(mine || "mac");
+// Version label only; downloads never depend on the API (it rate-limits shared IPs).
 fetch("https://api.github.com/repos/mdimamhosen/DropBridge/releases/latest")
   .then((r) => (r.ok ? r.json() : Promise.reject()))
   .then((rel) => {
-    fill(rel.assets || []);
     document.getElementById("ver").textContent = `Version ${rel.tag_name} · check files against SHA256SUMS.txt.`;
     document.getElementById("rel-tag").textContent = rel.tag_name;
   })
