@@ -440,6 +440,7 @@ footer a:hover { color: var(--text); }
         <ol data-os="android" hidden>
           <li>Tap <b>Download APK</b> on your phone. Chrome warns that the file <i>might be harmful</i> — it says this for every app from outside the Play Store. Tap <b>Download anyway</b>, then <b>Open</b>.</li>
           <li>If asked, allow your browser to <b>install unknown apps</b> (one time), then tap <b>Install</b>.</li>
+          <li>If <b>Google Play Protect</b> warns about an unrecognised app: tap <b>More details → Install anyway</b> (or <b>Scan app</b>, then install). It shows this for new apps installed outside the Play Store; DropBridge is open source and contains no tracking.</li>
           <li>Open DropBridge, tap <b>Continue</b>, allow notifications. Done.</li>
         </ol>
         <ol data-os="mac">
@@ -612,7 +613,7 @@ showOS(mine || "mac");
 const note = document.getElementById("dl-note");
 if (mine === "android") {
   note.hidden = false;
-  note.innerHTML = "Chrome will say the file <b>might be harmful</b> — normal for apps from outside the Play Store. Tap <b>Download anyway</b>, then <b>Open</b> → <b>Install</b>.";
+  note.innerHTML = "Chrome may say the file <b>might be harmful</b> and Play Protect may warn too — both are normal for new apps from outside the Play Store. Tap <b>Download anyway</b> → <b>Open</b> → <b>Install</b>; if Play Protect asks, <b>More details → Install anyway</b>.";
 } else if (ios) {
   note.hidden = false;
   note.innerHTML = "📱 The iPhone app isn't available yet. Install DropBridge on your Android phone or your Mac, Windows or Linux computer — open this page there.";

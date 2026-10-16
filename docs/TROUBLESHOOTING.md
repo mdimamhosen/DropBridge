@@ -39,6 +39,10 @@ verified byte. After that, press **Retry**: only missing files are sent.
 **macOS asks for Keychain access after an update** — click *Always Allow*. Unsigned builds change signature
 on every release; signed releases don't ask.
 
+**Android: "Blocked by Play Protect" / "App scan recommended"** — Play Protect warns about apps it hasn't seen
+on many phones yet. Tap **More details → Install anyway**, or **Scan app** and then install. Chrome's "file might be
+harmful" message before that is shown for every APK downloaded outside the Play Store.
+
 **Windows SmartScreen** — *More info → Run anyway*. Verify the SHA-256 against `SHA256SUMS.txt` on the release page first.
 
 **Where are my files?** — Desktop: your Downloads folder (change in Settings). Android: `Download/DropBridge`.

@@ -41,7 +41,8 @@ Every file is listed with its SHA-256 in `SHA256SUMS.txt` on the [release page](
 
 1. Download the APK on your phone and open it.
 2. If asked, allow your browser or file manager to **install unknown apps** (one time), then tap **Install**.
-3. Open DropBridge, tap **Continue** and allow notifications.
+3. If **Google Play Protect** warns about an unrecognised app, tap **More details → Install anyway** (or **Scan app**, then install). It does this for new apps installed outside the Play Store.
+4. Open DropBridge, tap **Continue** and allow notifications.
 </details>
 
 <details open>
