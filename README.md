@@ -2,7 +2,7 @@
 <h1 align="center">DropBridge</h1>
 <p align="center">AirDrop-style file sharing between Android, macOS, Windows and Linux.<br/>
 Direct, encrypted, no account, no cloud.</p>
-<p align="center"><a href="https://github.com/mdimamhosen/DropBridge/releases/latest"><b>Download</b></a> · <a href="https://mdimamhosen.github.io/DropBridge/">Website</a> · <a href="docs/ARCHITECTURE.md">How it works</a></p>
+<p align="center"><a href="https://github.com/mdimamhosen/DropBridge/releases/latest"><b>Download</b></a> · <a href="https://mdimamhosen.me/DropBridge/">Website</a> · <a href="docs/ARCHITECTURE.md">How it works</a></p>
 
 ---
 

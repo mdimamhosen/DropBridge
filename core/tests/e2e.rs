@@ -326,6 +326,9 @@ fn pause_resume_and_cancel() {
     std::thread::sleep(Duration::from_millis(300));
     a.node.resume(&tid);
     a.wait(10, |e| matches!(e, Event::Progress { paused: false, .. }));
+    // cancel while paused so a fast machine can't finish the file first
+    a.node.pause(&tid);
+    a.wait(10, |e| matches!(e, Event::Progress { paused: true, .. }));
     a.node.cancel(&tid);
     assert!(matches!(a.finished(), Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("Cancelled")));
     assert!(matches!(b.finished(), Event::Finished { ok: false, .. }));
@@ -340,12 +343,13 @@ fn receiver_cancel_stops_sender() {
     let src = tempfile::tempdir().unwrap();
     let f = src.path().join("q.bin");
     random_file(&f, 300_000_000);
-    a.node.send(b.target(), vec![SendItem::Path { path: f.to_string_lossy().into() }]);
-    let Event::Progress { transfer_id, .. } = b.wait(10, |e| matches!(e, Event::Progress { bytes_done, .. } if *bytes_done > 0)) else {
-        unreachable!()
-    };
-    b.node.cancel(&transfer_id);
-    assert!(matches!(a.finished(), Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("receiver cancelled")));
+    let tid = a.node.send(b.target(), vec![SendItem::Path { path: f.to_string_lossy().into() }]);
+    a.wait(10, |e| matches!(e, Event::Progress { bytes_done, .. } if *bytes_done > 0));
+    a.node.pause(&tid); // hold the sender so the file can't complete before the cancel arrives
+    a.wait(10, |e| matches!(e, Event::Progress { paused: true, .. }));
+    b.node.cancel(&tid);
+    let f = a.finished();
+    assert!(matches!(f, Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("receiver cancelled")), "{f:?}");
 }
 
 #[test]
@@ -354,7 +358,7 @@ fn refuses_when_disk_too_small() {
     let (a, b) = pair();
     let src = tempfile::tempdir().unwrap();
     let f = src.path().join("huge.img");
-    std::fs::File::create(&f).unwrap().set_len(1 << 52).unwrap(); // sparse 4 PB
+    std::fs::File::create(&f).unwrap().set_len(1 << 43).unwrap(); // sparse 8 TiB (ext4 caps files at 16 TiB)
     a.node.send(b.target(), vec![SendItem::Path { path: f.to_string_lossy().into() }]);
     assert!(matches!(a.finished(), Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("Not enough space")));
 }
