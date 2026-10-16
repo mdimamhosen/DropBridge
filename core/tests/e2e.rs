@@ -318,22 +318,27 @@ fn pause_resume_and_cancel() {
     let (a, b) = pair();
     let src = tempfile::tempdir().unwrap();
     let f = src.path().join("p.bin");
-    random_file(&f, 200_000_000);
+    random_file(&f, 20_000_000);
+    // Pausing right after send() is deterministic: the sender stops at its first chunk on any machine.
     let tid = a.node.send(b.target(), vec![SendItem::Path { path: f.to_string_lossy().into() }]);
-    a.wait(10, |e| matches!(e, Event::Progress { bytes_done, .. } if *bytes_done > 0));
     a.node.pause(&tid);
     a.wait(10, |e| matches!(e, Event::Progress { paused: true, .. }));
     std::thread::sleep(Duration::from_millis(300));
+    assert!(!b.inbox().join("p.bin").exists(), "nothing completes while paused");
     a.node.resume(&tid);
-    a.wait(10, |e| matches!(e, Event::Progress { paused: false, .. }));
-    // cancel while paused so a fast machine can't finish the file first
+    assert!(ok(&a.finished()));
+    assert_eq!(hash(&b.inbox().join("p.bin")), hash(&f));
+    b.finished();
+
+    let tid = a.node.send(b.target(), vec![SendItem::Path { path: f.to_string_lossy().into() }]);
     a.node.pause(&tid);
     a.wait(10, |e| matches!(e, Event::Progress { paused: true, .. }));
     a.node.cancel(&tid);
-    assert!(matches!(a.finished(), Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("Cancelled")));
+    let fin = a.finished();
+    assert!(matches!(fin, Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("Cancelled")), "{fin:?}");
     assert!(matches!(b.finished(), Event::Finished { ok: false, .. }));
     std::thread::sleep(Duration::from_millis(200));
-    assert!(!b.inbox().join("p.bin").exists());
+    assert!(!b.inbox().join("p (1).bin").exists());
     assert!(!b.inbox().join(".p.bin.dbpart").exists(), "cancel removes partial data");
 }
 
@@ -342,14 +347,13 @@ fn receiver_cancel_stops_sender() {
     let (a, b) = pair();
     let src = tempfile::tempdir().unwrap();
     let f = src.path().join("q.bin");
-    random_file(&f, 300_000_000);
+    random_file(&f, 20_000_000);
     let tid = a.node.send(b.target(), vec![SendItem::Path { path: f.to_string_lossy().into() }]);
-    a.wait(10, |e| matches!(e, Event::Progress { bytes_done, .. } if *bytes_done > 0));
-    a.node.pause(&tid); // hold the sender so the file can't complete before the cancel arrives
+    a.node.pause(&tid); // hold the sender so the file can't complete before the receiver cancels
     a.wait(10, |e| matches!(e, Event::Progress { paused: true, .. }));
     b.node.cancel(&tid);
-    let f = a.finished();
-    assert!(matches!(f, Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("receiver cancelled")), "{f:?}");
+    let fin = a.finished();
+    assert!(matches!(fin, Event::Finished { ok: false, error: Some(ref e), .. } if e.contains("receiver cancelled")), "{fin:?}");
 }
 
 #[test]
