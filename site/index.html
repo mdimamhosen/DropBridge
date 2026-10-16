@@ -107,6 +107,7 @@ h1 { font-size: clamp(38px, 6.2vw, 66px); line-height: 1.04; margin: 20px 0 18px
 @keyframes dash { to { stroke-dashoffset: -28; } }
 @media (max-width: 900px) { .stage { height: 330px; max-width: 520px; margin: 0 auto; } .beam, .flyer { display: none; } }
 
+@media (max-width: 600px) { .stage { display: none; } }
 /* stats */
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 44px; }
 @media (max-width: 720px) { .stats { grid-template-columns: repeat(2, 1fr); } }
@@ -221,6 +222,8 @@ h2 { font-size: clamp(30px, 4.6vw, 46px); margin: 8px 0 12px; letter-spacing: -.
 .cli .c { color: #6b7a99; }
 
 [hidden] { display: none !important; }
+.dl-note { margin: 14px 0 0; font-size: 14.5px; color: var(--muted); max-width: 520px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+@media (max-width: 900px) { .dl-note { margin-left: auto; margin-right: auto; } }
 /* install */
 .install { margin-top: 26px; background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 24px; }
 .install h3 { margin: 0 0 14px; font-size: 20px; }
@@ -291,6 +294,7 @@ footer a:hover { color: var(--text); }
           <a class="btn primary" id="hero-dl" href="#download">Download free</a>
           <a class="btn" href="https://github.com/mdimamhosen/DropBridge">★ Star on GitHub</a>
         </div>
+        <p class="dl-note" id="dl-note" hidden></p>
         <div class="trust reveal" style="--d:.32s"><span>Open source</span><span>No sign-up</span><span>Works offline</span><span>Every file verified</span></div>
       </div>
       <div class="stage reveal" style="--d:.2s" aria-hidden="true">
@@ -434,7 +438,7 @@ footer a:hover { color: var(--text); }
           <button role="tab" data-os="linux" aria-selected="false">Linux</button>
         </div>
         <ol data-os="android" hidden>
-          <li>Tap <b>Download APK</b> above on your phone and open the file when it finishes.</li>
+          <li>Tap <b>Download APK</b> on your phone. Chrome warns that the file <i>might be harmful</i> — it says this for every app from outside the Play Store. Tap <b>Download anyway</b>, then <b>Open</b>.</li>
           <li>If asked, allow your browser to <b>install unknown apps</b> (one time), then tap <b>Install</b>.</li>
           <li>Open DropBridge, tap <b>Continue</b>, allow notifications. Done.</li>
         </ol>
@@ -596,7 +600,8 @@ document.getElementById("copy-cmd").addEventListener("click", (e) => {
 // downloads from the latest GitHub release
 const REL = "https://github.com/mdimamhosen/DropBridge/releases/latest";
 const ua = navigator.userAgent;
-const mine = /Android/i.test(ua) ? "android" : /iPhone|iPad/i.test(ua) ? "" : /Mac/i.test(ua) ? "mac" : /Win/i.test(ua) ? "windows" : /Linux/i.test(ua) ? "linux" : "";
+const ios = /iPhone|iPad|iPod/i.test(ua) || (/Mac/i.test(ua) && navigator.maxTouchPoints > 1);
+const mine = /Android/i.test(ua) ? "android" : ios ? "" : /Mac/i.test(ua) ? "mac" : /Win/i.test(ua) ? "windows" : /Linux/i.test(ua) ? "linux" : "";
 document.querySelectorAll(".dl").forEach((card) => card.classList.toggle("mine", card.dataset.os === mine));
 if (mine) {
   const first = document.querySelector(`.dl[data-os="${mine}"] .files a`), h = document.getElementById("hero-dl");
@@ -604,6 +609,16 @@ if (mine) {
   h.textContent = `Download for ${{ android: "Android", mac: "macOS", windows: "Windows", linux: "Linux" }[mine]}`;
 }
 showOS(mine || "mac");
+const note = document.getElementById("dl-note");
+if (mine === "android") {
+  note.hidden = false;
+  note.innerHTML = "Chrome will say the file <b>might be harmful</b> — normal for apps from outside the Play Store. Tap <b>Download anyway</b>, then <b>Open</b> → <b>Install</b>.";
+} else if (ios) {
+  note.hidden = false;
+  note.innerHTML = "📱 The iPhone app isn't available yet. Install DropBridge on your Android phone or your Mac, Windows or Linux computer — open this page there.";
+  const h = document.getElementById("hero-dl");
+  h.textContent = "See all downloads";
+}
 // Version label only; downloads never depend on the API (it rate-limits shared IPs).
 fetch("https://api.github.com/repos/mdimamhosen/DropBridge/releases/latest")
   .then((r) => (r.ok ? r.json() : Promise.reject()))
